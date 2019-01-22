@@ -10,7 +10,9 @@ import (
 	"net"
 )
 
-type TritiumUdpPacket struct {
+// TritiumUDPPacket represents a UDP packet received from the Tritium
+// CAN-Ethernet bridge
+type TritiumUDPPacket struct {
 	// Magic number
 	versionIdentifier uint64
 	busNumber         uint8
@@ -18,14 +20,14 @@ type TritiumUdpPacket struct {
 	clientIdentifier uint64
 
 	// CAN arbitration ID
-	canId uint32
+	canID uint32
 
 	// Flags is a 8-bit field
-	// (flagHeartbeat << 7) | (flagSettings << 6) | (flagRtr << 1) | (flagExtendedId << 0)
+	// (flagHeartbeat << 7) | (flagSettings << 6) | (flagRtr << 1) | (flagExtendedID << 0)
 	flagHeartbeat  bool
 	flagSettings   bool
 	flagRtr        bool
-	flagExtendedId bool
+	flagExtendedID bool
 
 	// Length
 	length uint8
@@ -33,7 +35,7 @@ type TritiumUdpPacket struct {
 	data uint64
 }
 
-func byteArrayToTritiumMessage(array []byte, tritiumPacket *TritiumUdpPacket) {
+func byteArrayToTritiumMessage(array []byte, tritiumPacket *TritiumUDPPacket) {
 	//
 	// UDP Packet layout:
 	//
@@ -115,19 +117,19 @@ func byteArrayToTritiumMessage(array []byte, tritiumPacket *TritiumUdpPacket) {
 	tritiumPacket.clientIdentifier = binary.BigEndian.Uint64(array[8:16])
 	fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.clientIdentifier)
 
-	tritiumPacket.canId = binary.BigEndian.Uint32(array[16:20])
-	fmt.Printf("CAN ID: 0x%x\n", tritiumPacket.canId)
+	tritiumPacket.canID = binary.BigEndian.Uint32(array[16:20])
+	fmt.Printf("CAN ID: 0x%x\n", tritiumPacket.canID)
 
 	flags := array[20]
 	tritiumPacket.flagHeartbeat = (flags>>7)&uint8(1) == 1
 	tritiumPacket.flagSettings = (flags>>6)&uint8(1) == 1
 	tritiumPacket.flagRtr = (flags>>1)&uint8(1) == 1
-	tritiumPacket.flagExtendedId = (flags>>0)&uint8(1) == 1
+	tritiumPacket.flagExtendedID = (flags>>0)&uint8(1) == 1
 	fmt.Printf("Flags: 0x%x\n", flags)
 	fmt.Printf("Heartbeat: %t\n", tritiumPacket.flagHeartbeat)
 	fmt.Printf("Settings: %t\n", tritiumPacket.flagSettings)
 	fmt.Printf("RTR: %t\n", tritiumPacket.flagRtr)
-	fmt.Printf("Extended: %t\n", tritiumPacket.flagExtendedId)
+	fmt.Printf("Extended: %t\n", tritiumPacket.flagExtendedID)
 
 	tritiumPacket.length = uint8(array[21])
 	fmt.Printf("Length: 0x%x\n", tritiumPacket.length)
@@ -136,7 +138,7 @@ func byteArrayToTritiumMessage(array []byte, tritiumPacket *TritiumUdpPacket) {
 	fmt.Printf("Data: 0x%x\n", tritiumPacket.data)
 }
 
-func tritiumPacketToCanFrame(tritiumPacket *TritiumUdpPacket) {
+func tritiumPacketToCanFrame(tritiumPacket *TritiumUDPPacket, sendFrame []byte) {
 	// 4 + 1 + 1 + 1 + 1 + 8 = 16
 	// Taken from the Linux kernel source:
 	//   include/uapi/linux/can.h
@@ -149,17 +151,19 @@ func tritiumPacketToCanFrame(tritiumPacket *TritiumUdpPacket) {
 	//   __u8    __res1;  [> reserved / padding <]
 	//   __u8    data[CAN_MAX_DLEN] __attribute__((aligned(8)));
 	// };
-	sendFrame := make([]byte, 16)
+	// sendFrame := make([]byte, 16)
 
 	// Set Arbitration ID
 	// TODO: Set Extended bit if needed
-	binary.LittleEndian.PutUint32(sendFrame[0:4], tritiumPacket.canId)
+	binary.LittleEndian.PutUint32(sendFrame[0:4], tritiumPacket.canID)
 
 	// Set DLC
 	sendFrame[4] = tritiumPacket.length
 
 	// Data
 	binary.LittleEndian.PutUint64(sendFrame[8:], tritiumPacket.data)
+
+	// return sendFrame
 }
 
 func main() {
@@ -216,19 +220,22 @@ func main() {
 			panic("Failed")
 		}
 
-		tritiumPacket := new(TritiumUdpPacket)
+		tritiumPacket := new(TritiumUDPPacket)
 		byteArrayToTritiumMessage(b, tritiumPacket)
 
-		fmt.Println(tritiumPacket.canId)
+		fmt.Println(tritiumPacket.canID)
 		fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.busNumber)
 		fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.clientIdentifier)
 		fmt.Printf("Heartbeat: %t\n", tritiumPacket.flagHeartbeat)
 		fmt.Printf("Settings: %t\n", tritiumPacket.flagSettings)
 		fmt.Printf("RTR: %t\n", tritiumPacket.flagRtr)
-		fmt.Printf("Extended: %t\n", tritiumPacket.flagExtendedId)
+		fmt.Printf("Extended: %t\n", tritiumPacket.flagExtendedID)
 		fmt.Printf("Length: 0x%x\n", tritiumPacket.length)
 		fmt.Printf("Data: 0x%x\n", tritiumPacket.data)
 
+		sendFrame := make([]byte, 16)
+		tritiumPacketToCanFrame(tritiumPacket, sendFrame)
+		fmt.Println(sendFrame)
 		// Now forward onto SocketCAN interface
 	}
 }

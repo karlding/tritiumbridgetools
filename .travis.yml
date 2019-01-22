@@ -1,5 +1,16 @@
 language: go
 sudo: false
-
-script:
-  - go build
+go:
+  - 1.10.x
+before_install:
+  - go get golang.org/x/lint/golint
+  - go get honnef.co/go/tools/cmd/staticcheck
+jobs:
+  include:
+    - script: make all
+    - stage: Run Test Coverage
+      script: make cover
+      after_success: bash <(curl -s https://codecov.io/bash)
+    - stage: Build Release
+      script:
+        - make release
