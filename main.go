@@ -5,22 +5,179 @@ import (
 	"flag"
 	"fmt"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/sys/unix"
 	"log"
 	"net"
 )
 
 type TritiumUdpPacket struct {
-	busIdentifier    uint64
+	// Magic number
+	versionIdentifier uint64
+	busNumber         uint8
+
 	clientIdentifier uint64
-	canId            uint32
-	flags            uint8
-	length           uint8
-	data             uint64
+
+	// CAN arbitration ID
+	canId uint32
+
+	// Flags is a 8-bit field
+	// (flagHeartbeat << 7) | (flagSettings << 6) | (flagRtr << 1) | (flagExtendedId << 0)
+	flagHeartbeat  bool
+	flagSettings   bool
+	flagRtr        bool
+	flagExtendedId bool
+
+	// Length
+	length uint8
+	// Data
+	data uint64
+}
+
+func byteArrayToTritiumMessage(array []byte, tritiumPacket *TritiumUdpPacket) {
+	//
+	// UDP Packet layout:
+	//
+	// +-----------------------------+
+	// | Padding (8 bits)            | 0
+	// +-----------------------------+
+	// | Bus Identifier (56 bits)    | 1 - 7
+	// +-----------------------------+
+	// | Padding (8 bits)            | 8
+	// +-----------------------------+
+	// | Client Identifier (56 bits) | 9 - 15
+	// +-----------------------------+
+	// | CAN ID (32 bits)            | 16 - 19
+	// +-----------------------------+
+	// | Flags (8 bits)              | 20
+	// +-----------------------------+
+	// | Length (8 bits)             | 21
+	// +-----------------------------+
+	// | Data (64 bits)              | 22 - 29
+	// +-----------------------------+
+	//
+	// Bus Identifier:
+	// 	* The first 52 bits contain the magic number 0x5472697469756
+	// 	  (Tritium)
+	// 	* The LSB 4 bits represent the bus number that the packet was
+	// 	  transmitted on (and can be configured with the Tritium tool)
+	//
+	// +------------------------------+
+	// | Version Identifier (52 bits) |
+	// +------------------------------+
+	// | Bus Number (4 bits)          |
+	// +------------------------------+
+	//
+	// Client Identifier:
+	//  * The CAN-Ethernet bridges use the MAC address of their Ethernet
+	//    interface as their client id
+	//
+	// Identifier:
+	//  * The CAN ID is contained in the low 11 bits (29 in extended mode)
+	//
+	// Flags:
+	//
+	// +-------------+
+	// | Heartbeat   |
+	// +-------------+
+	// | Settings    |
+	// +-------------+
+	// | RTR         |
+	// +-------------+
+	// | Extended ID |
+	// +-------------+
+	//
+	//  * Heartbeat: Indicates that this datagram contains a message from
+	//    the bridge itself, rather than a bridged CAN packet.
+	//  * Settings: Indicates that this datagram contains a setting for the
+	//    bridge itself
+	//  * RTR: Indicates that the data contained in this datagram should be
+	//    sent as an RTR packet on the physical CAN network.
+	//  * Extended ID: Indicates that this packet should be sent with an
+	//    extended CAN identifier.
+	//
+	// Length:
+	//  * indicates the length of the packet data, in bytes (max 8)
+	//
+	// Data:
+	//  * the data contained in the physical CAN packet
+	//  * Extra bytes are padded with 0s to result in 8 bytes of data
+	fmt.Println(array)
+	busIdentifier := binary.BigEndian.Uint64(array[0:8])
+	// Mask out the high bits that
+	tritiumPacket.versionIdentifier = busIdentifier >> 4
+	tritiumPacket.busNumber = uint8(busIdentifier & (0x0F))
+
+	fmt.Printf("Bus Identifier: 0x%x\n", busIdentifier)
+	fmt.Printf("Version Identifier: 0x%x\n", tritiumPacket.versionIdentifier)
+	fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.busNumber)
+
+	// Mask out the
+	tritiumPacket.clientIdentifier = binary.BigEndian.Uint64(array[8:16])
+	fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.clientIdentifier)
+
+	tritiumPacket.canId = binary.BigEndian.Uint32(array[16:20])
+	fmt.Printf("CAN ID: 0x%x\n", tritiumPacket.canId)
+
+	flags := array[20]
+	tritiumPacket.flagHeartbeat = (flags>>7)&uint8(1) == 1
+	tritiumPacket.flagSettings = (flags>>6)&uint8(1) == 1
+	tritiumPacket.flagRtr = (flags>>1)&uint8(1) == 1
+	tritiumPacket.flagExtendedId = (flags>>0)&uint8(1) == 1
+	fmt.Printf("Flags: 0x%x\n", flags)
+	fmt.Printf("Heartbeat: %t\n", tritiumPacket.flagHeartbeat)
+	fmt.Printf("Settings: %t\n", tritiumPacket.flagSettings)
+	fmt.Printf("RTR: %t\n", tritiumPacket.flagRtr)
+	fmt.Printf("Extended: %t\n", tritiumPacket.flagExtendedId)
+
+	tritiumPacket.length = uint8(array[21])
+	fmt.Printf("Length: 0x%x\n", tritiumPacket.length)
+
+	tritiumPacket.data = binary.BigEndian.Uint64(array[22:30])
+	fmt.Printf("Data: 0x%x\n", tritiumPacket.data)
+}
+
+func tritiumPacketToCanFrame(tritiumPacket *TritiumUdpPacket) {
+	// 4 + 1 + 1 + 1 + 1 + 8 = 16
+	// Taken from the Linux kernel source:
+	//   include/uapi/linux/can.h
+	//
+	// struct can_frame {
+	//   canid_t can_id;  [> 32 bit CAN_ID + EFF/RTR/ERR flags <]
+	//   __u8    can_dlc; [> frame payload length in byte (0 .. CAN_MAX_DLEN) <]
+	//   __u8    __pad;   [> padding <]
+	//   __u8    __res0;  [> reserved / padding <]
+	//   __u8    __res1;  [> reserved / padding <]
+	//   __u8    data[CAN_MAX_DLEN] __attribute__((aligned(8)));
+	// };
+	sendFrame := make([]byte, 16)
+
+	// Set Arbitration ID
+	// TODO: Set Extended bit if needed
+	binary.LittleEndian.PutUint32(sendFrame[0:4], tritiumPacket.canId)
+
+	// Set DLC
+	sendFrame[4] = tritiumPacket.length
+
+	// Data
+	binary.LittleEndian.PutUint64(sendFrame[8:], tritiumPacket.data)
 }
 
 func main() {
 	flag.Parse()
 	fmt.Println("tail: ", flag.Args())
+
+	// SocketCAN setup
+	vcan0, err := net.InterfaceByName("vcan0")
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+	fd, err := unix.Socket(unix.AF_CAN, unix.SOCK_RAW, unix.CAN_RAW)
+	if err != nil {
+		return
+	}
+	addr := &unix.SockaddrCAN{Ifindex: vcan0.Index}
+	unix.Bind(fd, addr)
 
 	enp0s25, err := net.InterfaceByName("enp0s25")
 	if err != nil {
@@ -48,117 +205,30 @@ func main() {
 	for {
 		// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
 		numBytes, _, _, err := p.ReadFrom(b)
+		fmt.Printf("Received %d bytes\n", numBytes)
 		if err != nil {
 			// error handling
 			continue
 		}
 
 		if numBytes != 30 {
-			fmt.Printf("Received %d bytes\n", numBytes)
 			fmt.Println(b)
 			panic("Failed")
 		}
 
-		//
-		// UDP Packet layout:
-		//
-		// +-----------------------------+
-		// | Padding (8 bits)            | 0
-		// +-----------------------------+
-		// | Bus Identifier (56 bits)    | 1 - 7
-		// +-----------------------------+
-		// | Padding (8 bits)            | 8
-		// +-----------------------------+
-		// | Client Identifier (56 bits) | 9 - 15
-		// +-----------------------------+
-		// | CAN ID (32 bits)            | 16 - 19
-		// +-----------------------------+
-		// | Flags (8 bits)              | 20
-		// +-----------------------------+
-		// | Length (8 bits)             | 21
-		// +-----------------------------+
-		// | Data (64 bits)              | 22 - 29
-		// +-----------------------------+
-		//
-		// Bus Identifier:
-		// 	* The first 52 bits contain the magic number 0x5472697469756
-		// 	  (Tritium)
-		// 	* The LSB 4 bits represent the bus number that the packet was
-		// 	  transmitted on (and can be configured with the Tritium tool)
-		//
-		// +------------------------------+
-		// | Version Identifier (52 bits) |
-		// +------------------------------+
-		// | Bus Number (4 bits)          |
-		// +------------------------------+
-		//
-		// Client Identifier:
-		//  * The CAN-Ethernet bridges use the MAC address of their Ethernet
-		//    interface as their client id
-		//
-		// Identifier:
-		//  * The CAN ID is contained in the low 11 bits (29 in extended mode)
-		//
-		// Flags:
-		//
-		// +-------------+
-		// | Heartbeat   |
-		// +-------------+
-		// | Settings    |
-		// +-------------+
-		// | RTR         |
-		// +-------------+
-		// | Extended ID |
-		// +-------------+
-		//
-		//  * Heartbeat: Indicates that this datagram contains a message from
-		//    the bridge itself, rather than a bridged CAN packet.
-		//  * Settings: Indicates that this datagram contains a setting for the
-		//    bridge itself
-		//  * RTR: Indicates that the data contained in this datagram should be
-		//    sent as an RTR packet on the physical CAN network.
-		//  * Extended ID: Indicates that this packet should be sent with an
-		//    extended CAN identifier.
-		//
-		// Length:
-		//  * indicates the length of the packet data, in bytes (max 8)
-		//
-		// Data:
-		//  * the data contained in the physical CAN packet
-		//  * Extra bytes are padded with 0s to result in 8 bytes of data
-		fmt.Printf("Received %d bytes\n", numBytes)
-		fmt.Println(b)
-		busIdentifier := binary.BigEndian.Uint64(b[0:8])
-		// Mask out the high bits that
-		versionIdentifier := busIdentifier >> 4
-		busNumber := busIdentifier & (0x0F)
+		tritiumPacket := new(TritiumUdpPacket)
+		byteArrayToTritiumMessage(b, tritiumPacket)
 
-		fmt.Printf("Bus Identifier: 0x%x\n", busIdentifier)
-		fmt.Printf("Version Identifier: 0x%x\n", versionIdentifier)
-		fmt.Printf("Bus Number: 0x%x\n", busNumber)
+		fmt.Println(tritiumPacket.canId)
+		fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.busNumber)
+		fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.clientIdentifier)
+		fmt.Printf("Heartbeat: %t\n", tritiumPacket.flagHeartbeat)
+		fmt.Printf("Settings: %t\n", tritiumPacket.flagSettings)
+		fmt.Printf("RTR: %t\n", tritiumPacket.flagRtr)
+		fmt.Printf("Extended: %t\n", tritiumPacket.flagExtendedId)
+		fmt.Printf("Length: 0x%x\n", tritiumPacket.length)
+		fmt.Printf("Data: 0x%x\n", tritiumPacket.data)
 
-		// Mask out the
-		clientIdentifier := binary.BigEndian.Uint64(b[8:16])
-		fmt.Printf("Client Identifier: 0x%x\n", clientIdentifier)
-
-		canId := binary.BigEndian.Uint32(b[16:20])
-		fmt.Printf("CAN ID: 0x%x\n", canId)
-
-		flags := b[20]
-		flagHeartbeat := (flags>>7)&uint8(1) == 1
-		flagSettings := (flags>>6)&uint8(1) == 1
-		flagRtr := (flags>>1)&uint8(1) == 1
-		flagExtendedId := (flags>>0)&uint8(1) == 1
-		fmt.Printf("Flags: 0x%x\n", flags)
-		fmt.Printf("Heartbeat: %t\n", flagHeartbeat)
-		fmt.Printf("Settings: %t\n", flagSettings)
-		fmt.Printf("RTR: %t\n", flagRtr)
-		fmt.Printf("Extended: %t\n", flagExtendedId)
-
-		length := b[21]
-		fmt.Printf("Length: 0x%x\n", length)
-
-		data := binary.BigEndian.Uint64(b[22:30])
-		fmt.Printf("Data: 0x%x\n", data)
+		// Now forward onto SocketCAN interface
 	}
 }
