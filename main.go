@@ -205,7 +205,7 @@ func main() {
 		return
 	}
 
-	b := make([]byte, 1500)
+	b := make([]byte, 30)
 	for {
 		// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
 		numBytes, _, _, err := p.ReadFrom(b)
@@ -223,7 +223,7 @@ func main() {
 		tritiumPacket := new(TritiumUDPPacket)
 		byteArrayToTritiumMessage(b, tritiumPacket)
 
-		fmt.Println(tritiumPacket.canID)
+		fmt.Printf("CAN Id: %d\n", tritiumPacket.canID)
 		fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.busNumber)
 		fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.clientIdentifier)
 		fmt.Printf("Heartbeat: %t\n", tritiumPacket.flagHeartbeat)
