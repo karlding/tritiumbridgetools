@@ -1,3 +1,9 @@
+# github.com/inconshreveable/mousetrap v1.0.0
+github.com/inconshreveable/mousetrap
+# github.com/spf13/cobra v0.0.3
+github.com/spf13/cobra
+# github.com/spf13/pflag v1.0.3
+github.com/spf13/pflag
 # golang.org/x/net v0.0.0-20190119204137-ed066c81e75e
 golang.org/x/net/ipv4
 golang.org/x/net/bpf

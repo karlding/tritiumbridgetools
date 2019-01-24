@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/binary"
-	"flag"
 	"fmt"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
@@ -109,6 +108,9 @@ func byteArrayToTritiumMessage(array []byte, tritiumPacket *TritiumUDPPacket) {
 	tritiumPacket.versionIdentifier = busIdentifier >> 4
 	tritiumPacket.busNumber = uint8(busIdentifier & (0x0F))
 
+	if tritiumPacket.versionIdentifier != 0x5472697469756 {
+		panic("Tritium Packet did not contain magic number.")
+	}
 	fmt.Printf("Bus Identifier: 0x%x\n", busIdentifier)
 	fmt.Printf("Version Identifier: 0x%x\n", tritiumPacket.versionIdentifier)
 	fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.busNumber)
@@ -154,23 +156,26 @@ func tritiumPacketToCanFrame(tritiumPacket *TritiumUDPPacket, sendFrame []byte) 
 	// sendFrame := make([]byte, 16)
 
 	// Set Arbitration ID
-	// TODO: Set Extended bit if needed
-	binary.LittleEndian.PutUint32(sendFrame[0:4], tritiumPacket.canID)
+	canID := tritiumPacket.canID & unix.CAN_SFF_MASK
+	if tritiumPacket.flagExtendedID {
+		canID = tritiumPacket.canID & unix.CAN_EFF_MASK
+	}
+	binary.LittleEndian.PutUint32(sendFrame[0:4], canID)
 
 	// Set DLC
 	sendFrame[4] = tritiumPacket.length
 
 	// Data
-	binary.LittleEndian.PutUint64(sendFrame[8:], tritiumPacket.data)
+	binary.BigEndian.PutUint64(sendFrame[8:], tritiumPacket.data)
 
 	// return sendFrame
 }
 
-func main() {
-	flag.Parse()
-	fmt.Println("tail: ", flag.Args())
+func doStuff() {
+	// Set GitCommit and Version
 
 	// SocketCAN setup
+	// TODO: Parse this from command line
 	vcan0, err := net.InterfaceByName("vcan0")
 	if err != nil {
 		log.Fatal(err)
@@ -183,6 +188,7 @@ func main() {
 	addr := &unix.SockaddrCAN{Ifindex: vcan0.Index}
 	unix.Bind(fd, addr)
 
+	// TODO: Parse this from command line
 	enp0s25, err := net.InterfaceByName("enp0s25")
 	if err != nil {
 		log.Fatal(err)
@@ -193,6 +199,7 @@ func main() {
 
 	// The Tritium CAN-Ethernet bridge always broadcasts on port 4876
 	c, err := net.ListenPacket("udp4", "0.0.0.0:4876")
+	// Otherwise we can use TCP
 	if err != nil {
 		// error handling
 		return
@@ -233,9 +240,15 @@ func main() {
 		fmt.Printf("Length: 0x%x\n", tritiumPacket.length)
 		fmt.Printf("Data: 0x%x\n", tritiumPacket.data)
 
-		sendFrame := make([]byte, 16)
-		tritiumPacketToCanFrame(tritiumPacket, sendFrame)
-		fmt.Println(sendFrame)
-		// Now forward onto SocketCAN interface
+		// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
+		if !tritiumPacket.flagHeartbeat {
+			sendFrame := make([]byte, 16)
+			tritiumPacketToCanFrame(tritiumPacket, sendFrame)
+			unix.Write(fd, sendFrame)
+		}
 	}
+}
+
+func main() {
+	doStuff()
 }
