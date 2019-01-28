@@ -1,48 +1,30 @@
 package can
 
 import (
+	"golang.org/x/sys/unix"
+
 	"encoding/binary"
 )
 
 // TODO: Swap this out for a library when one is written
 
-// Constants taken from Linux kernel C headers
-
-// ExtendedFrameFormatFlag EFF/SFF is set in the MSB
-const ExtendedFrameFormatFlag uint32 = uint32(0x80000000)
-
-// RemoteTransmissionRequestFlag remote transmission request
-const RemoteTransmissionRequestFlag uint32 = uint32(0x40000000)
-
-// ErrorFlag error message frame
-const ErrorFlag uint32 = uint32(0x20000000)
-
-// StandardFrameFormatMask is a mask for standard frame format (SFF)
-const StandardFrameFormatMask uint32 = uint32(0x000007FF)
-
-// ExtendedFrameFormatMask is a mask for extended frame format (EFF)
-const ExtendedFrameFormatMask uint32 = uint32(0x1FFFFFFF)
-
-// ErrorMask is a mask for omit EFF, RTR, ERR flags
-const ErrorMask uint32 = uint32(0x1FFFFFFF)
-
 // Frame is a representation of the Linux can_frame struct
 type Frame struct {
 	// 32 bit CAN_ID + EFF/RTR/ERR flags
-	canID uint32
+	CanID uint32
 
-	canDLC uint8
-	data   [8]uint8
+	CanDLC uint8
+	Data   [8]byte
 }
 
 // IsExtendedFrame checks if the EFF flag is set
-func IsExtendedFrame(frame *Frame) {
-
+func IsExtendedFrame(frame *Frame) bool {
+	return (frame.CanID & unix.CAN_EFF_FLAG) == unix.CAN_EFF_FLAG
 }
 
 // IsRtrFrame checks if the RTR flag is set
-func IsRtrFrame(frame *Frame) {
-
+func IsRtrFrame(frame *Frame) bool {
+	return (frame.CanID & unix.CAN_RTR_FLAG) == unix.CAN_RTR_FLAG
 }
 
 // BufferToCANFrame converts a raw buffer (received over SocketCAN) to a
@@ -60,18 +42,18 @@ func BufferToCANFrame(buffer []byte, frame *Frame) {
 	//   __u8    data[CAN_MAX_DLEN] __attribute__((aligned(8)));
 	// };
 	canID := binary.LittleEndian.Uint32(buffer[0:4])
-	frame.canID = canID
+	frame.CanID = canID
 
 	canDLC := uint8(buffer[4])
-	frame.canDLC = canDLC
+	frame.CanDLC = canDLC
 
-	copy(frame.data[:], buffer[8:16])
+	copy(frame.Data[:], buffer[8:16])
 }
 
 // FrameToBuffer converts a Frame to a byte buffer
 func FrameToBuffer(frame *Frame, buffer []byte) {
-	binary.LittleEndian.PutUint32(buffer[0:4], frame.canID)
-	buffer[4] = frame.canDLC
+	binary.LittleEndian.PutUint32(buffer[0:4], frame.CanID)
+	buffer[4] = frame.CanDLC
 
-	copy(buffer[8:], frame.data[:])
+	copy(buffer[8:], frame.Data[:])
 }

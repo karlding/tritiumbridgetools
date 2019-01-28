@@ -13,9 +13,9 @@ func TestBufferToCANFrameStandardBatteryVTMessage(t *testing.T) {
 
 	BufferToCANFrame(rawBuffer, canFrame)
 
-	assert.Equal(t, uint32(0x401), canFrame.canID, "CAN frame ID was not equal")
-	assert.Equal(t, uint8(6), canFrame.canDLC, "CAN frame length was not equal")
-	assert.Equal(t, canFrame.data[0:8], rawBuffer[8:], "Data is not equal")
+	assert.Equal(t, uint32(0x401), canFrame.CanID, "CAN frame ID was not equal")
+	assert.Equal(t, uint8(6), canFrame.CanDLC, "CAN frame length was not equal")
+	assert.Equal(t, canFrame.Data[0:8], rawBuffer[8:], "Data is not equal")
 }
 
 func TestBufferToCANFrameStandardDriveOutputMessage(t *testing.T) {
@@ -25,9 +25,9 @@ func TestBufferToCANFrameStandardDriveOutputMessage(t *testing.T) {
 
 	BufferToCANFrame(rawBuffer, canFrame)
 
-	assert.Equal(t, uint32(0x248), canFrame.canID, "CAN frame ID was not equal")
-	assert.Equal(t, uint8(8), canFrame.canDLC, "CAN frame length was not equal")
-	assert.Equal(t, canFrame.data[0:8], rawBuffer[8:], "Data is not equal")
+	assert.Equal(t, uint32(0x248), canFrame.CanID, "CAN frame ID was not equal")
+	assert.Equal(t, uint8(8), canFrame.CanDLC, "CAN frame length was not equal")
+	assert.Equal(t, canFrame.Data[0:8], rawBuffer[8:], "Data is not equal")
 }
 
 func TestBufferToCANFrameStandardPowerpathMessage(t *testing.T) {
@@ -37,9 +37,9 @@ func TestBufferToCANFrameStandardPowerpathMessage(t *testing.T) {
 
 	BufferToCANFrame(rawBuffer, canFrame)
 
-	assert.Equal(t, uint32(0x203), canFrame.canID, "CAN frame ID was not equal")
-	assert.Equal(t, uint8(4), canFrame.canDLC, "CAN frame length was not equal")
-	assert.Equal(t, canFrame.data[0:8], rawBuffer[8:], "Data is not equal")
+	assert.Equal(t, uint32(0x203), canFrame.CanID, "CAN frame ID was not equal")
+	assert.Equal(t, uint8(4), canFrame.CanDLC, "CAN frame length was not equal")
+	assert.Equal(t, canFrame.Data[0:8], rawBuffer[8:], "Data is not equal")
 }
 
 // TODO: Add a test for Extended IDs

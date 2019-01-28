@@ -5,11 +5,17 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 
+	"github.com/karlding/tritiumbridgetools/socketcan"
+
 	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
 )
+
+// MagicNumber is the magic number denoting the Tritium UDP packet protocol
+// version
+var MagicNumber = uint64(0x5472697469756)
 
 // Transport is the type of network transport (TCP/UDP) used to communicate
 // with the Tritium CAN-Ethernet bridge
@@ -17,6 +23,8 @@ var Transport string
 
 // InterfaceName is the interface to listen on
 var InterfaceName string
+
+var bridge map[string]string
 
 func init() {
 	rootCmd.AddCommand(proxyCommand)
@@ -26,6 +34,9 @@ func init() {
 
 	proxyCommand.Flags().StringVarP(&InterfaceName, "interface", "i", "", "Network interface to listen on")
 	proxyCommand.MarkFlagRequired("interface")
+
+	proxyCommand.Flags().StringToStringVar(&bridge, "bridge", nil, "Bridge mapping")
+	proxyCommand.MarkFlagRequired("bridge")
 }
 
 var proxyCommand = &cobra.Command{
@@ -185,48 +196,29 @@ func tritiumPacketToCanFrame(tritiumPacket *TritiumUDPPacket, sendFrame []byte) 
 	// sendFrame := make([]byte, 16)
 
 	// Set Arbitration ID
-	canID := tritiumPacket.canID & unix.CAN_SFF_MASK
+	canID := tritiumPacket.canID
 	if tritiumPacket.flagExtendedID {
-		canID = tritiumPacket.canID & unix.CAN_EFF_MASK
+		canID = tritiumPacket.canID | unix.CAN_EFF_FLAG
 	}
-	binary.LittleEndian.PutUint32(sendFrame[0:4], canID)
 
-	// Set DLC
-	sendFrame[4] = tritiumPacket.length
+	frame := can.Frame{}
+	frame.CanID = canID
+	frame.CanDLC = tritiumPacket.length
+	binary.LittleEndian.PutUint64(frame.Data[:], tritiumPacket.data)
 
-	// Data
-	binary.BigEndian.PutUint64(sendFrame[8:], tritiumPacket.data)
+	can.FrameToBuffer(&frame, sendFrame)
 
 	// return sendFrame
 }
 
-func doStuff() {
-	// Set GitCommit and Version
-
-	// SocketCAN setup
-	// TODO: Parse this from command line
-	vcan0, err := net.InterfaceByName("vcan0")
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
-	fd, err := unix.Socket(unix.AF_CAN, unix.SOCK_RAW, unix.CAN_RAW)
-	if err != nil {
-		return
-	}
-	addr := &unix.SockaddrCAN{Ifindex: vcan0.Index}
-	unix.Bind(fd, addr)
-
-	// TODO: Parse this from command line
-	networkInterface, err := net.InterfaceByName(InterfaceName)
-	if err != nil {
-		log.Fatal(err)
-		return
-	}
+func doStuffOverUDP(fd int, networkInterface *net.Interface) {
 	// The Group Address is 239.255.60.60
 	group := net.IPv4(239, 255, 60, 60)
 
+	// Start a UDP connection
 	// The Tritium CAN-Ethernet bridge always broadcasts on port 4876
+	// TODO: Find the IP address on the provided interface
+	// MulticastAddrs
 	c, err := net.ListenPacket("udp4", "0.0.0.0:4876")
 	// Otherwise we can use TCP
 	if err != nil {
@@ -235,6 +227,9 @@ func doStuff() {
 	}
 	defer c.Close()
 
+	// Join UDP Multicast group
+	// This can be verified by checking the groups you belong to:
+	// 	netstat -gn | grep '239.255.60.60'
 	p := ipv4.NewPacketConn(c)
 	if err := p.JoinGroup(networkInterface, &net.UDPAddr{IP: group}); err != nil {
 		// error handling
@@ -273,7 +268,39 @@ func doStuff() {
 		if !tritiumPacket.flagHeartbeat {
 			sendFrame := make([]byte, 16)
 			tritiumPacketToCanFrame(tritiumPacket, sendFrame)
+			// Find the socket by bus number
 			unix.Write(fd, sendFrame)
+
+			// TODO: Implement SocketCAN -> CAN-Ethernet dongle so we can have
+			// bidirectional communication
+			// TODO: A new goroutine should listen on the SocketCAN socket
+			p.WriteTo(b, nil, &net.UDPAddr{IP: group})
 		}
 	}
+}
+
+func doStuff() {
+	// Set GitCommit and Version
+	fmt.Println(bridge)
+
+	vcan0, err := net.InterfaceByName("vcan0")
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+	fd, err := unix.Socket(unix.AF_CAN, unix.SOCK_RAW, unix.CAN_RAW)
+	if err != nil {
+		return
+	}
+	addr := &unix.SockaddrCAN{Ifindex: vcan0.Index}
+	unix.Bind(fd, addr)
+
+	// TODO: Parse this from command line
+	networkInterface, err := net.InterfaceByName(InterfaceName)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
+
+	doStuffOverUDP(fd, networkInterface)
 }
