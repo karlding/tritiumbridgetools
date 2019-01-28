@@ -14,3 +14,31 @@ jobs:
     - stage: Build Release
       script:
         - make release
+        - echo "Deploying to GitHub releases ..."
+      deploy:
+        provider: releases
+        file:
+          - cross/tritiumbridgetools-linux-386
+          - cross/tritiumbridgetools-linux-386.md5
+          - cross/tritiumbridgetools-linux-386.sha256
+          - cross/tritiumbridgetools-linux-amd64
+          - cross/tritiumbridgetools-linux-amd64.md5
+          - cross/tritiumbridgetools-linux-amd64.sha256
+
+          # Technically we should be able to support any architecture that
+          # supports SocketCAN interfaces, but I've never validated anything
+          # but i386 and amd64. I'm generating them via the .goosarch file, but
+          # until these are validated we're not going to release binaries for
+          # the time being.
+          # - cross/tritiumbridgetools-linux-arm
+          # - cross/tritiumbridgetools-linux-arm.md5
+          # - cross/tritiumbridgetools-linux-arm.sha256
+          # - cross/tritiumbridgetools-linux-arm64
+          # - cross/tritiumbridgetools-linux-amd64.md5
+          # - cross/tritiumbridgetools-linux-amd64.sha256
+        skip_cleanup: true
+        on:
+          tags: true
+          repo: karlding/tritiumbridgetools
+        api_key:
+          secure: 2ZpFh59ZRHicE/MEt9GjlVRlNubE9ijxCazPT+I9lmCRY2BMs/J3J9Am1pJFArN4DoMOPGTidcbeSy/eBL0gKwCAIxhSm6ZlPiyhiLyZzmf25124oorC4scZhupSEEemCpD4Wzc2unMJF6p3zzH+MXNlkuxMfM08V3878wgTGuDg8lLM9QAcNZS+N/lOe9splkPNKMkaWM9pJaYk4EWPnAzO+oirCsztdMm9zBNDJzQ2EakbrEScM9/yuYLslhoydkLSqH2T3VOYfzQNjeahx2bFG4oKqz7OhFw4/ukWjWgtJxybd2Hc0cD3Tcdu4luIID0ccQk6lZD6n0mVhqUN5mOg9Th/36FkWbdueyi5RkOZwNlzJiKZB4kFCK5Q494rlx5SZxKeR14yoaM3l5ibbO3wY/YsjLMDgJPesT4om73pAgxiVMpoPDRKfTjE+h5g4EACFYduEV9eVbMTOxJvvwljVej+8u4u/cETrBD6r0iqwkQMehlkkG+oDYVUCkpDB1oXoVsk72934JMTJG0eyTNkWEzv4mjgBmmmynijWN7jgJGlvBwzJHkjxPv+Szln5olLtTfkYiWGGwcZ/AyT9gUam1irJ5SaO/B/OCkeR2VONJsEOve7wN+sVdLoAeAp8Ck/vqBy8gIY0mO3RHG+R/0aMyEWA+0tIUrtHM7PMdI=
