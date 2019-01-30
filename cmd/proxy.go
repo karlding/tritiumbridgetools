@@ -24,6 +24,7 @@ var Transport string
 // InterfaceName is the interface to listen on
 var InterfaceName string
 
+var bridgeAddress string
 var bridge map[string]string
 
 func init() {
@@ -37,6 +38,9 @@ func init() {
 
 	proxyCommand.Flags().StringToStringVar(&bridge, "bridge", nil, "Bridge mapping")
 	proxyCommand.MarkFlagRequired("bridge")
+
+	proxyCommand.Flags().StringVarP(&bridgeAddress, "bridgeaddress", "p", "", "Bridge IP address")
+	proxyCommand.MarkFlagRequired("bridgeaddress")
 }
 
 var proxyCommand = &cobra.Command{
@@ -309,8 +313,9 @@ func doStuffOverTCP(fd int, networkInterface *net.Interface) {
 	binary.BigEndian.PutUint64(setupBuffer[16:24], clientIdentifier)
 
 	// Establish a TCP connection
-	// TODO: Change the IP address to a parameter
-	conn, _ := net.Dial("tcp4", "169.254.253.192:4876")
+	// TODO: Handle multiple Tritium bridges on the same subnet.
+	bridgeIPAddress := net.ParseIP(bridgeAddress)
+	conn, _ := net.Dial("tcp4", fmt.Sprintf("%s:4876", bridgeIPAddress.String()))
 
 	// Send fwd identifiers for every message
 	// TODO: Maybe we want to support selectively sending fwd identifiers?
