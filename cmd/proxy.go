@@ -270,11 +270,92 @@ func doStuffOverUDP(fd int, networkInterface *net.Interface) {
 			tritiumPacketToCanFrame(tritiumPacket, sendFrame)
 			// Find the socket by bus number
 			unix.Write(fd, sendFrame)
+		}
+	}
+}
 
-			// TODO: Implement SocketCAN -> CAN-Ethernet dongle so we can have
-			// bidirectional communication
-			// TODO: A new goroutine should listen on the SocketCAN socket
-			p.WriteTo(b, nil, &net.UDPAddr{IP: group})
+func doStuffOverTCP(fd int, networkInterface *net.Interface) {
+	// In TCP mode, we need to send:
+	//
+	// +-----------------------------+
+	// | Fwd Identifier (32 bits)    |
+	// +-----------------------------+
+	// | Fwd range (32 bits)         |
+	// +-----------------------------+
+	// | Padding (8 bits)            |
+	// +-----------------------------+
+	// | Bus Identifier (56 bits)    |
+	// +-----------------------------+
+	// | Padding (8 bits)            |
+	// +-----------------------------+
+	// | Client Identifier (56 bits) |
+	// +-----------------------------+
+	// |
+	setupBuffer := make([]byte, (4 + 4 + 1 + 7 + 1 + 7))
+
+	// The bridge will forward any packet matching:
+	// fwdIdentifier <= CAN arbitration id < (fwdIdentifier + fwdRange)
+	fwdIdentifier := uint32(0)
+	fwdRange := uint32(536870911)
+	// TODO: Take these as configuration options?
+	busIdentifier := uint64(13)
+	// 0x00fcc0cfc25000
+	// TODO: Convert MAC address to uint64
+	clientIdentifier := uint64(0)
+
+	binary.BigEndian.PutUint32(setupBuffer[0:4], fwdIdentifier)
+	binary.BigEndian.PutUint32(setupBuffer[4:8], fwdRange)
+	binary.BigEndian.PutUint64(setupBuffer[8:16], busIdentifier)
+	binary.BigEndian.PutUint64(setupBuffer[16:24], clientIdentifier)
+
+	// Establish a TCP connection
+	// TODO: Change the IP address to a parameter
+	conn, _ := net.Dial("tcp4", "169.254.253.192:4876")
+
+	// Send fwd identifiers for every message
+	// TODO: Maybe we want to support selectively sending fwd identifiers?
+	bytes, err := conn.Write(setupBuffer)
+	fmt.Println("We read this many bytes:")
+	fmt.Println(bytes)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	b := make([]byte, 30)
+	for {
+		// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
+		numBytes, err := conn.Read(b)
+		fmt.Printf("Received %d bytes\n", numBytes)
+		if err != nil {
+			// error handling
+			continue
+		}
+
+		if numBytes != 30 {
+			fmt.Println(b)
+			panic("Failed")
+		}
+
+		tritiumPacket := new(TritiumUDPPacket)
+		byteArrayToTritiumMessage(b, tritiumPacket)
+
+		fmt.Printf("CAN Id: %d\n", tritiumPacket.canID)
+		fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.busNumber)
+		fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.clientIdentifier)
+		fmt.Printf("Heartbeat: %t\n", tritiumPacket.flagHeartbeat)
+		fmt.Printf("Settings: %t\n", tritiumPacket.flagSettings)
+		fmt.Printf("RTR: %t\n", tritiumPacket.flagRtr)
+		fmt.Printf("Extended: %t\n", tritiumPacket.flagExtendedID)
+		fmt.Printf("Length: 0x%x\n", tritiumPacket.length)
+		fmt.Printf("Data: 0x%x\n", tritiumPacket.data)
+
+		// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
+		if !tritiumPacket.flagHeartbeat {
+			sendFrame := make([]byte, 16)
+			tritiumPacketToCanFrame(tritiumPacket, sendFrame)
+			// Find the socket by bus number
+			unix.Write(fd, sendFrame)
 		}
 	}
 }
@@ -302,5 +383,10 @@ func doStuff() {
 		return
 	}
 
-	doStuffOverUDP(fd, networkInterface)
+	// TODO: Does Cobra have a native way of doing enumerated strings?
+	if Transport == "udp" {
+		doStuffOverUDP(fd, networkInterface)
+	} else if Transport == "tcp" {
+		doStuffOverTCP(fd, networkInterface)
+	}
 }
