@@ -208,7 +208,7 @@ func tritiumPacketToCanFrame(tritiumPacket *TritiumUDPPacket, sendFrame []byte) 
 	frame := can.Frame{}
 	frame.CanID = canID
 	frame.CanDLC = tritiumPacket.length
-	binary.LittleEndian.PutUint64(frame.Data[:], tritiumPacket.data)
+	binary.BigEndian.PutUint64(frame.Data[:], tritiumPacket.data)
 
 	can.FrameToBuffer(&frame, sendFrame)
 
