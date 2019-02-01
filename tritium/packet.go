@@ -38,22 +38,7 @@ type Packet struct {
 	Data uint64
 }
 
-// ByteArrayTCPToTritiumMessage converts a byte array received from a TCP
-// connection to a Packet
-func ByteArrayTCPToTritiumMessage(array []byte, tritiumPacket *Packet) {
-	// TCP Packet Layout
-	//
-	// +-----------------------------+
-	// | CAN ID (32 bits)            | 0 - 3
-	// +-----------------------------+
-	// | Flags (8 bits)              | 4
-	// +-----------------------------+
-	// | Length (8 bits)             | 5
-	// +-----------------------------+
-	// | Data (64 bits)              | 6 - 13
-	// +-----------------------------+
-
-	// TODO: Refactor this to share with ByteArrayToTritiumMessage
+func byteArrayToTritiumMessage(array []byte, tritiumPacket *Packet) {
 	tritiumPacket.CanID = binary.BigEndian.Uint32(array[0:4])
 	fmt.Printf("CAN ID: 0x%x\n", tritiumPacket.CanID)
 
@@ -73,6 +58,23 @@ func ByteArrayTCPToTritiumMessage(array []byte, tritiumPacket *Packet) {
 
 	tritiumPacket.Data = binary.BigEndian.Uint64(array[6:14])
 	fmt.Printf("Data: 0x%x\n", tritiumPacket.Data)
+}
+
+// ByteArrayTCPToTritiumMessage converts a byte array received from a TCP
+// connection to a Packet
+func ByteArrayTCPToTritiumMessage(array []byte, tritiumPacket *Packet) {
+	// TCP Packet Layout
+	//
+	// +-----------------------------+
+	// | CAN ID (32 bits)            | 0 - 3
+	// +-----------------------------+
+	// | Flags (8 bits)              | 4
+	// +-----------------------------+
+	// | Length (8 bits)             | 5
+	// +-----------------------------+
+	// | Data (64 bits)              | 6 - 13
+	// +-----------------------------+
+	byteArrayToTritiumMessage(array, tritiumPacket)
 }
 
 // ByteArrayToTritiumMessage converts a raw byte array as received from a
@@ -167,25 +169,7 @@ func ByteArrayToTritiumMessage(array []byte, tritiumPacket *Packet) {
 	tritiumPacket.ClientIdentifier = binary.BigEndian.Uint64(array[8:16])
 	fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.ClientIdentifier)
 
-	tritiumPacket.CanID = binary.BigEndian.Uint32(array[16:20])
-	fmt.Printf("CAN ID: 0x%x\n", tritiumPacket.CanID)
-
-	flags := array[20]
-	tritiumPacket.FlagHeartbeat = (flags>>7)&uint8(1) == 1
-	tritiumPacket.FlagSettings = (flags>>6)&uint8(1) == 1
-	tritiumPacket.FlagRtr = (flags>>1)&uint8(1) == 1
-	tritiumPacket.FlagExtendedID = (flags>>0)&uint8(1) == 1
-	fmt.Printf("Flags: 0x%x\n", flags)
-	fmt.Printf("Heartbeat: %t\n", tritiumPacket.FlagHeartbeat)
-	fmt.Printf("Settings: %t\n", tritiumPacket.FlagSettings)
-	fmt.Printf("RTR: %t\n", tritiumPacket.FlagRtr)
-	fmt.Printf("Extended: %t\n", tritiumPacket.FlagExtendedID)
-
-	tritiumPacket.Length = uint8(array[21])
-	fmt.Printf("Length: 0x%x\n", tritiumPacket.Length)
-
-	tritiumPacket.Data = binary.BigEndian.Uint64(array[22:30])
-	fmt.Printf("Data: 0x%x\n", tritiumPacket.Data)
+	byteArrayToTritiumMessage(array[16:], tritiumPacket)
 }
 
 // PacketToSocketCANFrame converts a Tritium Packet representation to a
