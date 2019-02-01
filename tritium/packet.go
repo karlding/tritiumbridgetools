@@ -38,6 +38,43 @@ type Packet struct {
 	Data uint64
 }
 
+// ByteArrayTCPToTritiumMessage converts a byte array received from a TCP
+// connection to a Packet
+func ByteArrayTCPToTritiumMessage(array []byte, tritiumPacket *Packet) {
+	// TCP Packet Layout
+	//
+	// +-----------------------------+
+	// | CAN ID (32 bits)            | 0 - 3
+	// +-----------------------------+
+	// | Flags (8 bits)              | 4
+	// +-----------------------------+
+	// | Length (8 bits)             | 5
+	// +-----------------------------+
+	// | Data (64 bits)              | 6 - 13
+	// +-----------------------------+
+
+	// TODO: Refactor this to share with ByteArrayToTritiumMessage
+	tritiumPacket.CanID = binary.BigEndian.Uint32(array[0:4])
+	fmt.Printf("CAN ID: 0x%x\n", tritiumPacket.CanID)
+
+	flags := array[4]
+	tritiumPacket.FlagHeartbeat = (flags>>7)&uint8(1) == 1
+	tritiumPacket.FlagSettings = (flags>>6)&uint8(1) == 1
+	tritiumPacket.FlagRtr = (flags>>1)&uint8(1) == 1
+	tritiumPacket.FlagExtendedID = (flags>>0)&uint8(1) == 1
+	fmt.Printf("Flags: 0x%x\n", flags)
+	fmt.Printf("Heartbeat: %t\n", tritiumPacket.FlagHeartbeat)
+	fmt.Printf("Settings: %t\n", tritiumPacket.FlagSettings)
+	fmt.Printf("RTR: %t\n", tritiumPacket.FlagRtr)
+	fmt.Printf("Extended: %t\n", tritiumPacket.FlagExtendedID)
+
+	tritiumPacket.Length = uint8(array[5])
+	fmt.Printf("Length: 0x%x\n", tritiumPacket.Length)
+
+	tritiumPacket.Data = binary.BigEndian.Uint64(array[6:14])
+	fmt.Printf("Data: 0x%x\n", tritiumPacket.Data)
+}
+
 // ByteArrayToTritiumMessage converts a raw byte array as received from a
 // Tritium CAN-Ethernet bridge to a Packet
 func ByteArrayToTritiumMessage(array []byte, tritiumPacket *Packet) {
@@ -109,12 +146,17 @@ func ByteArrayToTritiumMessage(array []byte, tritiumPacket *Packet) {
 	//  * the data contained in the physical CAN packet
 	//  * Extra bytes are padded with 0s to result in 8 bytes of data
 	fmt.Println(array)
+	for i, val := range array {
+		fmt.Printf("array[%d]: 0x%x\n", i, val)
+	}
 	busIdentifier := binary.BigEndian.Uint64(array[0:8])
 	// Mask out the high bits that
 	tritiumPacket.VersionIdentifier = busIdentifier >> 4
 	tritiumPacket.BusNumber = uint8(busIdentifier & (0x0F))
 
 	if tritiumPacket.VersionIdentifier != magicNumber {
+		fmt.Println("Tritium Packet did not contain magic number.")
+		return
 		panic("Tritium Packet did not contain magic number.")
 	}
 	fmt.Printf("Bus Identifier: 0x%x\n", busIdentifier)
