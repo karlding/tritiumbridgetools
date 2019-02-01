@@ -24,18 +24,12 @@ jobs:
           - cross/tritiumbridgetools-linux-amd64
           - cross/tritiumbridgetools-linux-amd64.md5
           - cross/tritiumbridgetools-linux-amd64.sha256
-
-          # Technically we should be able to support any architecture that
-          # supports SocketCAN interfaces, but I've never validated anything
-          # but i386 and amd64. I'm generating them via the .goosarch file, but
-          # until these are validated we're not going to release binaries for
-          # the time being.
-          # - cross/tritiumbridgetools-linux-arm
-          # - cross/tritiumbridgetools-linux-arm.md5
-          # - cross/tritiumbridgetools-linux-arm.sha256
-          # - cross/tritiumbridgetools-linux-arm64
-          # - cross/tritiumbridgetools-linux-amd64.md5
-          # - cross/tritiumbridgetools-linux-amd64.sha256
+          - cross/tritiumbridgetools-linux-arm
+          - cross/tritiumbridgetools-linux-arm.md5
+          - cross/tritiumbridgetools-linux-arm.sha256
+          - cross/tritiumbridgetools-linux-arm64
+          - cross/tritiumbridgetools-linux-amd64.md5
+          - cross/tritiumbridgetools-linux-amd64.sha256
         skip_cleanup: true
         on:
           tags: true
