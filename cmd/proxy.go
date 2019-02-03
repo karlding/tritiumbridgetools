@@ -75,42 +75,47 @@ func doStuffOverUDP(fd int, networkInterface *net.Interface) {
 		return
 	}
 
-	b := make([]byte, 30)
-	for {
-		// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
-		numBytes, _, _, err := p.ReadFrom(b)
-		fmt.Printf("Received %d bytes\n", numBytes)
-		if err != nil {
-			// error handling
-			continue
+	go func() {
+		b := make([]byte, 30)
+		for {
+			// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
+			numBytes, _, addr, err := p.ReadFrom(b)
+			fmt.Printf("Received %d bytes\n", numBytes)
+			fmt.Printf("Address: %s\n", addr.String())
+			if err != nil {
+				// error handling
+				continue
+			}
+
+			if numBytes != 30 {
+				fmt.Println(b)
+				panic("Failed")
+			}
+
+			tritiumPacket := new(tritium.Packet)
+			tritium.ByteArrayToTritiumMessage(b, tritiumPacket)
+
+			fmt.Printf("CAN Id: %d\n", tritiumPacket.CanID)
+			fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.BusNumber)
+			fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.ClientIdentifier)
+			fmt.Printf("Heartbeat: %t\n", tritiumPacket.FlagHeartbeat)
+			fmt.Printf("Settings: %t\n", tritiumPacket.FlagSettings)
+			fmt.Printf("RTR: %t\n", tritiumPacket.FlagRtr)
+			fmt.Printf("Extended: %t\n", tritiumPacket.FlagExtendedID)
+			fmt.Printf("Length: 0x%x\n", tritiumPacket.Length)
+			fmt.Printf("Data: 0x%x\n", tritiumPacket.Data)
+
+			// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
+			if !tritiumPacket.FlagHeartbeat {
+				sendFrame := make([]byte, 16)
+				tritium.PacketToSocketCANFrame(tritiumPacket, sendFrame)
+				// Find the socket by bus number
+				unix.Write(fd, sendFrame)
+			}
 		}
+	}()
 
-		if numBytes != 30 {
-			fmt.Println(b)
-			panic("Failed")
-		}
-
-		tritiumPacket := new(tritium.Packet)
-		tritium.ByteArrayToTritiumMessage(b, tritiumPacket)
-
-		fmt.Printf("CAN Id: %d\n", tritiumPacket.CanID)
-		fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.BusNumber)
-		fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.ClientIdentifier)
-		fmt.Printf("Heartbeat: %t\n", tritiumPacket.FlagHeartbeat)
-		fmt.Printf("Settings: %t\n", tritiumPacket.FlagSettings)
-		fmt.Printf("RTR: %t\n", tritiumPacket.FlagRtr)
-		fmt.Printf("Extended: %t\n", tritiumPacket.FlagExtendedID)
-		fmt.Printf("Length: 0x%x\n", tritiumPacket.Length)
-		fmt.Printf("Data: 0x%x\n", tritiumPacket.Data)
-
-		// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
-		if !tritiumPacket.FlagHeartbeat {
-			sendFrame := make([]byte, 16)
-			tritium.PacketToSocketCANFrame(tritiumPacket, sendFrame)
-			// Find the socket by bus number
-			unix.Write(fd, sendFrame)
-		}
-	}
+	select {}
 }
 
 func doStuffOverTCP(fd int, networkInterface *net.Interface) {
@@ -201,48 +206,52 @@ func doStuffOverTCP(fd int, networkInterface *net.Interface) {
 		unix.Write(fd, sendFrame)
 	}
 
-	// Subsequent packets are 14 bytes
-	buff := make([]byte, 14)
-	for {
-		// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
-		numBytes, err := io.ReadFull(conn, buff[:])
-		fmt.Printf("Received %d bytes\n", numBytes)
-		for i, val := range buff {
-			fmt.Printf("buff[%d] = 0x%x\n", i, val)
-		}
-		if err != nil {
-			// error handling
-			fmt.Println(err)
-			continue
-			panic("Failed")
-		}
+	go func() {
+		// Subsequent packets are 14 bytes
+		buff := make([]byte, 14)
+		for {
+			// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
+			numBytes, err := io.ReadFull(conn, buff[:])
+			fmt.Printf("Received %d bytes\n", numBytes)
+			for i, val := range buff {
+				fmt.Printf("buff[%d] = 0x%x\n", i, val)
+			}
+			if err != nil {
+				// error handling
+				fmt.Println(err)
+				continue
+				panic("Failed")
+			}
 
-		if numBytes != 14 {
-			fmt.Println(buff)
-			panic("Failed")
+			if numBytes != 14 {
+				fmt.Println(buff)
+				panic("Failed")
+			}
+
+			tritiumPacket := new(tritium.Packet)
+			tritium.ByteArrayTCPToTritiumMessage(buff, tritiumPacket)
+
+			fmt.Printf("CAN Id: %d\n", tritiumPacket.CanID)
+			fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.BusNumber)
+			fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.ClientIdentifier)
+			fmt.Printf("Heartbeat: %t\n", tritiumPacket.FlagHeartbeat)
+			fmt.Printf("Settings: %t\n", tritiumPacket.FlagSettings)
+			fmt.Printf("RTR: %t\n", tritiumPacket.FlagRtr)
+			fmt.Printf("Extended: %t\n", tritiumPacket.FlagExtendedID)
+			fmt.Printf("Length: 0x%x\n", tritiumPacket.Length)
+			fmt.Printf("Data: 0x%x\n", tritiumPacket.Data)
+
+			// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
+			if !tritiumPacket.FlagHeartbeat {
+				sendFrame := make([]byte, 16)
+				tritium.PacketToSocketCANFrame(tritiumPacket, sendFrame)
+				// Find the socket by bus number
+				unix.Write(fd, sendFrame)
+			}
 		}
+	}()
 
-		tritiumPacket := new(tritium.Packet)
-		tritium.ByteArrayTCPToTritiumMessage(buff, tritiumPacket)
-
-		fmt.Printf("CAN Id: %d\n", tritiumPacket.CanID)
-		fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.BusNumber)
-		fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.ClientIdentifier)
-		fmt.Printf("Heartbeat: %t\n", tritiumPacket.FlagHeartbeat)
-		fmt.Printf("Settings: %t\n", tritiumPacket.FlagSettings)
-		fmt.Printf("RTR: %t\n", tritiumPacket.FlagRtr)
-		fmt.Printf("Extended: %t\n", tritiumPacket.FlagExtendedID)
-		fmt.Printf("Length: 0x%x\n", tritiumPacket.Length)
-		fmt.Printf("Data: 0x%x\n", tritiumPacket.Data)
-
-		// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
-		if !tritiumPacket.FlagHeartbeat {
-			sendFrame := make([]byte, 16)
-			tritium.PacketToSocketCANFrame(tritiumPacket, sendFrame)
-			// Find the socket by bus number
-			unix.Write(fd, sendFrame)
-		}
-	}
+	select {}
 }
 
 func doStuff() {
