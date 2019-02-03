@@ -39,6 +39,36 @@ type Packet struct {
 }
 
 func byteArrayToTritiumMessage(array []byte, tritiumPacket *Packet) {
+	// Identifier:
+	//  * The CAN ID is contained in the low 11 bits (29 in extended mode)
+	//
+	// Flags:
+	//
+	// +-------------+
+	// | Heartbeat   |
+	// +-------------+
+	// | Settings    |
+	// +-------------+
+	// | RTR         |
+	// +-------------+
+	// | Extended ID |
+	// +-------------+
+	//
+	//  * Heartbeat: Indicates that this datagram contains a message from
+	//    the bridge itself, rather than a bridged CAN packet.
+	//  * Settings: Indicates that this datagram contains a setting for the
+	//    bridge itself
+	//  * RTR: Indicates that the data contained in this datagram should be
+	//    sent as an RTR packet on the physical CAN network.
+	//  * Extended ID: Indicates that this packet should be sent with an
+	//    extended CAN identifier.
+	//
+	// Length:
+	//  * indicates the length of the packet data, in bytes (max 8)
+	//
+	// Data:
+	//  * the data contained in the physical CAN packet
+	//  * Extra bytes are padded with 0s to result in 8 bytes of data
 	tritiumPacket.CanID = binary.BigEndian.Uint32(array[0:4])
 	fmt.Printf("CAN ID: 0x%x\n", tritiumPacket.CanID)
 
@@ -80,7 +110,6 @@ func ByteArrayTCPToTritiumMessage(array []byte, tritiumPacket *Packet) {
 // ByteArrayToTritiumMessage converts a raw byte array as received from a
 // Tritium CAN-Ethernet bridge to a Packet
 func ByteArrayToTritiumMessage(array []byte, tritiumPacket *Packet) {
-	//
 	// UDP Packet layout:
 	//
 	// +-----------------------------+
@@ -116,37 +145,6 @@ func ByteArrayToTritiumMessage(array []byte, tritiumPacket *Packet) {
 	// Client Identifier:
 	//  * The CAN-Ethernet bridges use the MAC address of their Ethernet
 	//    interface as their client id
-	//
-	// Identifier:
-	//  * The CAN ID is contained in the low 11 bits (29 in extended mode)
-	//
-	// Flags:
-	//
-	// +-------------+
-	// | Heartbeat   |
-	// +-------------+
-	// | Settings    |
-	// +-------------+
-	// | RTR         |
-	// +-------------+
-	// | Extended ID |
-	// +-------------+
-	//
-	//  * Heartbeat: Indicates that this datagram contains a message from
-	//    the bridge itself, rather than a bridged CAN packet.
-	//  * Settings: Indicates that this datagram contains a setting for the
-	//    bridge itself
-	//  * RTR: Indicates that the data contained in this datagram should be
-	//    sent as an RTR packet on the physical CAN network.
-	//  * Extended ID: Indicates that this packet should be sent with an
-	//    extended CAN identifier.
-	//
-	// Length:
-	//  * indicates the length of the packet data, in bytes (max 8)
-	//
-	// Data:
-	//  * the data contained in the physical CAN packet
-	//  * Extra bytes are padded with 0s to result in 8 bytes of data
 	fmt.Println(array)
 	for i, val := range array {
 		fmt.Printf("array[%d]: 0x%x\n", i, val)

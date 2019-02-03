@@ -95,16 +95,6 @@ func doStuffOverUDP(fd int, networkInterface *net.Interface) {
 			tritiumPacket := new(tritium.Packet)
 			tritium.ByteArrayToTritiumMessage(b, tritiumPacket)
 
-			fmt.Printf("CAN Id: %d\n", tritiumPacket.CanID)
-			fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.BusNumber)
-			fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.ClientIdentifier)
-			fmt.Printf("Heartbeat: %t\n", tritiumPacket.FlagHeartbeat)
-			fmt.Printf("Settings: %t\n", tritiumPacket.FlagSettings)
-			fmt.Printf("RTR: %t\n", tritiumPacket.FlagRtr)
-			fmt.Printf("Extended: %t\n", tritiumPacket.FlagExtendedID)
-			fmt.Printf("Length: 0x%x\n", tritiumPacket.Length)
-			fmt.Printf("Data: 0x%x\n", tritiumPacket.Data)
-
 			// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
 			if !tritiumPacket.FlagHeartbeat {
 				sendFrame := make([]byte, 16)
@@ -134,23 +124,29 @@ func doStuffOverTCP(fd int, networkInterface *net.Interface) {
 	// +-----------------------------+
 	// | Client Identifier (56 bits) |
 	// +-----------------------------+
-	// |
 	setupBuffer := make([]byte, (4 + 4 + 1 + 7 + 1 + 7))
 
 	// The bridge will forward any packet matching:
-	// fwdIdentifier <= CAN arbitration id < (fwdIdentifier + fwdRange)
+	//
+	// 		fwdIdentifier <= CAN arbitration id < (fwdIdentifier + fwdRange)
+	//
+	// So we set the bridge to forward all valid CAN IDs (including extended),
+	// which is the range [0, 2^29 - 1]
 	fwdIdentifier := uint32(0)
 	fwdRange := uint32(536870911)
+	// The Bus Number must match the Bus Number specified in the Tritium
+	// CAN-Ethernet Bridge Configuration tool, otherwise the TCP connection is
+	// terminated.
 	// TODO: Take these as configuration options?
 	busIdentifier := (uint64(0x5472697469756) << 4) | uint64(0xd)
-	// 0x00fcc0cfc25000
-	// TODO: Convert this computer's MAC address to uint64
-	clientIdentifier := uint64(0xffc0cfc25000)
 
 	binary.BigEndian.PutUint32(setupBuffer[0:4], fwdIdentifier)
 	binary.BigEndian.PutUint32(setupBuffer[4:8], fwdRange)
 	binary.BigEndian.PutUint64(setupBuffer[8:16], busIdentifier)
-	binary.BigEndian.PutUint64(setupBuffer[16:24], clientIdentifier)
+	// TODO: We probably need error checking here in case the MAC address
+	// is not 8 bytes?
+	macAddress := networkInterface.HardwareAddr
+	copy(setupBuffer[16:24], macAddress[0:8])
 
 	// Establish a TCP connection
 	// TODO: Handle multiple Tritium bridges on the same subnet.
@@ -230,16 +226,6 @@ func doStuffOverTCP(fd int, networkInterface *net.Interface) {
 
 			tritiumPacket := new(tritium.Packet)
 			tritium.ByteArrayTCPToTritiumMessage(buff, tritiumPacket)
-
-			fmt.Printf("CAN Id: %d\n", tritiumPacket.CanID)
-			fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.BusNumber)
-			fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.ClientIdentifier)
-			fmt.Printf("Heartbeat: %t\n", tritiumPacket.FlagHeartbeat)
-			fmt.Printf("Settings: %t\n", tritiumPacket.FlagSettings)
-			fmt.Printf("RTR: %t\n", tritiumPacket.FlagRtr)
-			fmt.Printf("Extended: %t\n", tritiumPacket.FlagExtendedID)
-			fmt.Printf("Length: 0x%x\n", tritiumPacket.Length)
-			fmt.Printf("Data: 0x%x\n", tritiumPacket.Data)
 
 			// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
 			if !tritiumPacket.FlagHeartbeat {
