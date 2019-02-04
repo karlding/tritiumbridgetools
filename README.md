@@ -24,24 +24,58 @@ sudo ip link set up vcan0
 # We write data from bus 13 on vcan0
 ./tritiumbridgetools proxy \
   --transport=udp \
-  --interface=enp0s25 \
-  --bridge "vcan0=13"
+  --config=example-01.toml
 
 # Proxy multiple buses instead if we have multiple bridges sending
 ./tritiumbridgetools proxy \
   --transport=udp \
-  --interface=enp0s25 \
-  --bridge "vcan0=13","vcan1=14"
+  --config=example-02.toml
 
 # Proxy over TCP instead of UDP
 ./tritiumbridgetools proxy \
   --transport=tcp \
-  --bridgeaddress=169.254.253.192 \
-  --interface=enp0s25 \
-  --bridge "vcan0=13","vcan1=14"
+  --config=example-01.toml
 
 # Dump data to stdout in candump format
 ./tritiumbridgetools dump \
   --transport=udp \
-  --interface=enp0s25
+  --config=example-01.toml
+```
+
+## Known limitations
+
+* Currently, we require a 1:1 mapping between bridges and VCAN networks,
+regardless of network interface the bridge is connected to
+* All bridges in use must have a unique bus number, regardless of network
+interface the bridge is connected to
+* No discovery and setup based on heartbeat packets
+* All bridges must be connected to the same Network Interface
+
+
+## TOML config file
+
+### Example 01: Map a Tritium CAN-Ethernet bridge to a vcan network
+
+```toml
+[[bridge]]
+ip = "169.254.253.192"
+id = 13
+network_interface = "enp0s25"
+vcan = "vcan0"
+```
+
+### Example 02: Map multiple bridges on one interface to separate vcan networks
+
+```toml
+[[bridge]]
+ip = "169.254.253.192"
+id = 13
+network_interface = "enp0s25"
+vcan = "vcan0"
+
+[[bridge]]
+ip = "169.254.253.193"
+id = 14
+network_interface = "enp0s25"
+vcan = "vcan1"
 ```
