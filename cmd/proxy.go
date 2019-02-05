@@ -295,7 +295,7 @@ func doStuff() {
 	var conf Config
 
 	// TOML parsing
-	toml.DecodeFile("example.toml", &conf)
+	toml.DecodeFile(tomlFile, &conf)
 
 	if Transport == "udp" {
 		doStuffOverUDP(conf)
