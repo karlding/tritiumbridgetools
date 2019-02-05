@@ -24,22 +24,22 @@ sudo ip link set up vcan0
 # We write data from bus 13 on vcan0
 ./tritiumbridgetools proxy \
   --transport=udp \
-  --config=example-01.toml
+  --config=configs/example-01.toml
 
 # Proxy multiple buses instead if we have multiple bridges sending
 ./tritiumbridgetools proxy \
   --transport=udp \
-  --config=example-02.toml
+  --config=configs/example-02.toml
 
 # Proxy over TCP instead of UDP
 ./tritiumbridgetools proxy \
   --transport=tcp \
-  --config=example-01.toml
+  --config=configs/example-01.toml
 
 # Dump data to stdout in candump format
 ./tritiumbridgetools dump \
   --transport=udp \
-  --config=example-01.toml
+  --config=configs/example-01.toml
 ```
 
 ## Known limitations

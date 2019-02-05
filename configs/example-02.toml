@@ -1,0 +1,11 @@
+[[bridge]]
+ip = "169.254.253.192"
+id = 13
+network_interface = "enp0s25"
+vcan = "vcan0"
+
+[[bridge]]
+ip = "169.254.253.193"
+id = 14
+network_interface = "enp0s25"
+vcan = "vcan1"
