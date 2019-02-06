@@ -143,7 +143,7 @@ func doStuffOverUDP(conf Config) {
 			return
 		}
 
-		// Start a goroutine for each SocketCAN interface
+		// Start a goroutine for each SocketCAN interface to forward over UDP
 		go func(fd int, packetConn *ipv4.PacketConn, macAddress uint64) {
 			rxBuff := make([]byte, 16)
 			txBuff := make([]byte, 30)
@@ -245,8 +245,9 @@ func doStuffOverTCP(conf Config) {
 		binary.BigEndian.PutUint64(setupBuffer[8:16], busIdentifier)
 		// TODO: We probably need error checking here in case the MAC address
 		// is not 8 bytes?
-		macAddress := networkInterface.HardwareAddr
-		copy(setupBuffer[16:24], macAddress[0:8])
+		copy(setupBuffer[16:24], networkInterface.HardwareAddr[0:8])
+		macAddressBuffer := networkInterface.HardwareAddr
+		macAddress := binary.LittleEndian.Uint64(macAddressBuffer[0:8])
 
 		// Establish a TCP connection
 		// TODO: Handle multiple Tritium bridges on the same subnet.
@@ -327,6 +328,41 @@ func doStuffOverTCP(conf Config) {
 			}
 		}(conn, fd)
 
+		// Forward from SocketCAN interface over TCP
+		go func(socketCanFd int, packetConn net.Conn, macAddress uint64) {
+			rxBuff := make([]byte, 16)
+			txBuff := make([]byte, 30)
+
+			for {
+				// Read from SocketCAN interface
+				// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
+				numBytes, err := unix.Read(socketCanFd, rxBuff[:])
+				log.Println("kralyoloasdf", rxBuff)
+				if err != nil {
+					continue
+				}
+				if numBytes != 16 {
+					panic("numBytes was not 16 bytes")
+				}
+
+				tritiumPacket := new(tritium.Packet)
+				tritium.SocketCANToTritiumPacket(rxBuff, tritiumPacket, uint64(0x5472697469756), 0xd, macAddress)
+
+				tritium.PacketToNetworkByteArray(tritiumPacket, txBuff)
+
+				// We skip the headers that aren't needed:
+				//
+				// * Bus Identifier: 8 bytes
+				// * Client Identifier: 8 bytes
+				bytes, err := packetConn.Write(txBuff[16:])
+				if err != nil {
+					panic(err)
+				}
+				if bytes != 30 {
+					log.Printf("Only wrote %d bytes\n", bytes)
+				}
+			}
+		}(fd, conn, macAddress)
 	}
 
 	select {}
