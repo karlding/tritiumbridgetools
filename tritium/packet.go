@@ -104,6 +104,9 @@ func ByteArrayTCPToTritiumMessage(array []byte, tritiumPacket *Packet) {
 	// +-----------------------------+
 	// | Data (64 bits)              | 6 - 13
 	// +-----------------------------+
+	for key, val := range array {
+		fmt.Printf("array[%d]: 0x%x\n", key, val)
+	}
 	byteArrayToTritiumMessage(array, tritiumPacket)
 }
 
@@ -201,4 +204,82 @@ func PacketToSocketCANFrame(tritiumPacket *Packet, sendFrame []byte) {
 	can.FrameToBuffer(&frame, sendFrame)
 
 	// return sendFrame
+}
+
+// SocketCANToTritiumPacket converts a SocketCAN message buffer to a Tritium Packet representation
+func SocketCANToTritiumPacket(sendFrame []byte, tritiumPacket *Packet, versionIdentifier uint64, busNumber uint8, clientIdentifier uint64) {
+	// TODO: Once a Userspace library exists for working with CANFrame, switch
+	// to using that.
+
+	// Convert to a can.Frame first
+	canFrame := new(can.Frame)
+	can.BufferToCANFrame(sendFrame, canFrame)
+
+	// Set magic number
+	tritiumPacket.VersionIdentifier = versionIdentifier
+	tritiumPacket.BusNumber = busNumber
+	tritiumPacket.ClientIdentifier = clientIdentifier
+
+	// CAN arbitration ID
+	// TODO: Mask this properly
+	tritiumPacket.CanID = canFrame.CanID
+
+	// If CAN_EFF_FLAG is set on ID, then set FlagExtendedID
+	// TODO: Add support for RTR frames
+	// TODO: Add support for extended frames
+
+	// Length
+	tritiumPacket.Length = canFrame.CanDLC
+
+	// Data
+	tritiumPacket.Data = binary.BigEndian.Uint64(canFrame.Data[0:8])
+}
+
+// PacketToNetworkByteArray converts a Tritium Packet representation to a raw Byte Array to be sent over
+// the network
+func PacketToNetworkByteArray(tritiumPacket *Packet, buff []byte) {
+	// Packet Layout
+	//
+	// +-----------------------------+
+	// | Padding (8 bits)            | 0
+	// +-----------------------------+
+	// | Bus Identifier (56 bits)    | 1 - 7
+	// +-----------------------------+
+	// | Padding (8 bits)            | 8
+	// +-----------------------------+
+	// | Client Identifier (56 bits) | 9 - 15
+	// +-----------------------------+
+	// | CAN ID (32 bits)            | 16 - 19
+	// +-----------------------------+
+	// | Flags (8 bits)              | 20
+	// +-----------------------------+
+	// | Length (8 bits)             | 21
+	// +-----------------------------+
+	// | Data (64 bits)              | 22 - 29
+	// +-----------------------------+
+	binary.BigEndian.PutUint64(buff[0:8], (uint64(tritiumPacket.BusNumber))|(tritiumPacket.VersionIdentifier<<4))
+
+	binary.BigEndian.PutUint64(buff[8:16], tritiumPacket.ClientIdentifier)
+
+	binary.BigEndian.PutUint32(buff[16:20], tritiumPacket.CanID)
+
+	// (FlagHeartbeat << 7) | (FlagSettings << 6) | (FlagRtr << 1) | (FlagExtendedID << 0)
+	flags := uint8(0)
+	if tritiumPacket.FlagHeartbeat {
+		flags |= (1 << 7)
+	}
+	if tritiumPacket.FlagSettings {
+		flags |= (1 << 6)
+	}
+	if tritiumPacket.FlagRtr {
+		flags |= (1 << 1)
+	}
+	if tritiumPacket.FlagExtendedID {
+		flags |= (1 << 0)
+	}
+	buff[20] = flags
+
+	buff[21] = tritiumPacket.Length
+
+	binary.BigEndian.PutUint64(buff[22:], tritiumPacket.Data)
 }

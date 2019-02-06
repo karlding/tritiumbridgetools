@@ -133,11 +133,53 @@ func doStuffOverUDP(conf Config) {
 			log.Fatal(err)
 			return
 		}
+		// TODO: Error handling for this..
+		// Probably handle failing case with random padded
+		macAddressBuffer := networkInterface.HardwareAddr
+		macAddress := binary.LittleEndian.Uint64(macAddressBuffer[0:8])
 
 		if err := p.JoinGroup(networkInterface, &net.UDPAddr{IP: group}); err != nil {
 			// error handling
 			return
 		}
+
+		// Start a goroutine for each SocketCAN interface
+		go func(fd int, packetConn *ipv4.PacketConn, macAddress uint64) {
+			rxBuff := make([]byte, 16)
+			txBuff := make([]byte, 30)
+			networkInterface, err := net.InterfaceByName(bridge.NetworkInterface)
+			if err != nil {
+				log.Fatal(err)
+				return
+			}
+
+			for {
+				// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
+				numBytes, err := unix.Read(fd, rxBuff[:])
+				log.Println("kralyoloasdf", rxBuff)
+				if err != nil {
+					continue
+				}
+				if numBytes != 16 {
+					panic("numBytes was not 16 bytes")
+				}
+
+				tritiumPacket := new(tritium.Packet)
+				tritium.SocketCANToTritiumPacket(rxBuff, tritiumPacket, uint64(0x5472697469756), 0xd, macAddress)
+
+				tritium.PacketToNetworkByteArray(tritiumPacket, txBuff)
+
+				// Send multicast packet to group
+				// TODO: is it necessary to specify a control message?
+				bytes, err := packetConn.WriteTo(txBuff, &ipv4.ControlMessage{IfIndex: networkInterface.Index}, &net.UDPAddr{IP: group, Port: 4876})
+				if err != nil {
+					panic(err)
+				}
+				if bytes != 30 {
+					log.Printf("Only wrote %d bytes\n", bytes)
+				}
+			}
+		}(fd, p, macAddress)
 	}
 
 	go handleUDPPackets(p, socketMap)
