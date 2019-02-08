@@ -28,8 +28,8 @@ jobs:
           - cross/tritiumbridgetools-linux-arm.md5
           - cross/tritiumbridgetools-linux-arm.sha256
           - cross/tritiumbridgetools-linux-arm64
-          - cross/tritiumbridgetools-linux-amd64.md5
-          - cross/tritiumbridgetools-linux-amd64.sha256
+          - cross/tritiumbridgetools-linux-arm64.md5
+          - cross/tritiumbridgetools-linux-arm64.sha256
         skip_cleanup: true
         on:
           tags: true
