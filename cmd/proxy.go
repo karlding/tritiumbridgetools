@@ -3,9 +3,9 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 	"golang.org/x/net/ipv4"
-	"golang.org/x/sys/unix"
 
 	"github.com/BurntSushi/toml"
+	"github.com/linklayer/go-socketcan/pkg/socketcan"
 
 	"github.com/karlding/tritiumbridgetools/tritium"
 
@@ -58,7 +58,7 @@ var proxyCommand = &cobra.Command{
 	},
 }
 
-func handleUDPPackets(packetConn *ipv4.PacketConn, socketMap map[uint8]int) {
+func handleUDPPackets(packetConn *ipv4.PacketConn, socketMapNew map[uint8]socketcan.Interface) {
 	// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
 	b := make([]byte, 30)
 
@@ -83,8 +83,16 @@ func handleUDPPackets(packetConn *ipv4.PacketConn, socketMap map[uint8]int) {
 			tritium.PacketToSocketCANFrame(tritiumPacket, sendFrame)
 
 			// Find the socket by bus number
-			if fd, ok := socketMap[tritiumPacket.BusNumber]; ok {
-				unix.Write(fd, sendFrame)
+			if vcan, ok := socketMapNew[tritiumPacket.BusNumber]; ok {
+				tmp := make([]byte, 8)
+				binary.BigEndian.PutUint64(tmp[:], tritiumPacket.Data)
+
+				vcan.SendFrame(socketcan.CanFrame{
+					ArbId:    tritiumPacket.CanID,
+					Dlc:      tritiumPacket.Length,
+					Data:     tmp[0:8],
+					Extended: tritiumPacket.FlagExtendedID,
+				})
 			}
 		}
 	}
@@ -95,7 +103,7 @@ func doStuffOverUDP(conf Config) {
 	group := net.IPv4(239, 255, 60, 60)
 
 	// socketMap[Bus Number] = SocketCAN file descriptor
-	socketMap := make(map[uint8]int)
+	socketMapNew := make(map[uint8]socketcan.Interface)
 
 	// Start a UDP connection
 	// The Tritium CAN-Ethernet bridge always broadcasts on port 4876
@@ -113,20 +121,12 @@ func doStuffOverUDP(conf Config) {
 	p := ipv4.NewPacketConn(c)
 
 	for _, bridge := range conf.Bridge {
-		vcan, err := net.InterfaceByName(bridge.SocketCANInterface)
+		vcan, err := socketcan.NewRawInterface(bridge.SocketCANInterface)
 		if err != nil {
 			log.Fatal(err)
 			return
 		}
-
-		fd, err := unix.Socket(unix.AF_CAN, unix.SOCK_RAW, unix.CAN_RAW)
-		if err != nil {
-			return
-		}
-
-		addr := &unix.SockaddrCAN{Ifindex: vcan.Index}
-		socketMap[bridge.ID] = fd
-		unix.Bind(fd, addr)
+		socketMapNew[bridge.ID] = vcan
 
 		networkInterface, err := net.InterfaceByName(bridge.NetworkInterface)
 		if err != nil {
@@ -144,28 +144,26 @@ func doStuffOverUDP(conf Config) {
 		}
 
 		// Start a goroutine for each SocketCAN interface to forward over UDP
-		go func(fd int, packetConn *ipv4.PacketConn, macAddress uint64) {
-			rxBuff := make([]byte, 16)
+		go func(packetConn *ipv4.PacketConn, macAddress uint64) {
 			txBuff := make([]byte, 30)
-			networkInterface, err := net.InterfaceByName(bridge.NetworkInterface)
-			if err != nil {
-				log.Fatal(err)
-				return
-			}
 
 			for {
 				// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
-				numBytes, err := unix.Read(fd, rxBuff[:])
-				log.Println("kralyoloasdf", rxBuff)
+				canFrame, err := socketMapNew[0xd].RecvFrame()
 				if err != nil {
-					continue
+					panic("oof")
 				}
-				if numBytes != 16 {
-					panic("numBytes was not 16 bytes")
-				}
+				log.Println("Received SocketCAN frame")
 
+				// TODO: Write a proper conversion function here
 				tritiumPacket := new(tritium.Packet)
-				tritium.SocketCANToTritiumPacket(rxBuff, tritiumPacket, uint64(0x5472697469756), 0xd, macAddress)
+				tritiumPacket.VersionIdentifier = uint64(0x5472697469756)
+				tritiumPacket.BusNumber = 0xd
+				tritiumPacket.ClientIdentifier = macAddress
+				tritiumPacket.CanID = canFrame.ArbId
+				tritiumPacket.FlagExtendedID = canFrame.Extended
+				tritiumPacket.Length = canFrame.Dlc
+				tritiumPacket.Data = binary.BigEndian.Uint64(canFrame.Data[0:8])
 
 				tritium.PacketToNetworkByteArray(tritiumPacket, txBuff)
 
@@ -179,10 +177,10 @@ func doStuffOverUDP(conf Config) {
 					log.Printf("Only wrote %d bytes\n", bytes)
 				}
 			}
-		}(fd, p, macAddress)
+		}(p, macAddress)
 	}
 
-	go handleUDPPackets(p, socketMap)
+	go handleUDPPackets(p, socketMapNew)
 
 	select {}
 }
@@ -204,19 +202,24 @@ func doStuffOverTCP(conf Config) {
 	// | Client Identifier (56 bits) |
 	// +-----------------------------+
 	for _, bridge := range conf.Bridge {
-		vcan, err := net.InterfaceByName(bridge.SocketCANInterface)
+		vcan, err := socketcan.NewRawInterface(bridge.SocketCANInterface)
 		if err != nil {
 			log.Fatal(err)
 			return
 		}
+		// vcan, err := net.InterfaceByName(bridge.SocketCANInterface)
+		// if err != nil {
+		// log.Fatal(err)
+		// return
+		// }
 
-		fd, err := unix.Socket(unix.AF_CAN, unix.SOCK_RAW, unix.CAN_RAW)
-		if err != nil {
-			return
-		}
+		// fd, err := unix.Socket(unix.AF_CAN, unix.SOCK_RAW, unix.CAN_RAW)
+		// if err != nil {
+		// return
+		// }
 
-		addr := &unix.SockaddrCAN{Ifindex: vcan.Index}
-		unix.Bind(fd, addr)
+		// addr := &unix.SockaddrCAN{Ifindex: vcan.Index}
+		// unix.Bind(fd, addr)
 
 		networkInterface, err := net.InterfaceByName(bridge.NetworkInterface)
 		if err != nil {
@@ -268,7 +271,7 @@ func doStuffOverTCP(conf Config) {
 		}
 
 		// Start a goroutine for each bridge we're receiving from
-		go func(conn net.Conn, fd int) {
+		go func(conn net.Conn, vcan socketcan.Interface) {
 			b := make([]byte, 30)
 			// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
 			numBytes, err := io.ReadFull(conn, b[:])
@@ -288,10 +291,15 @@ func doStuffOverTCP(conf Config) {
 
 			// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
 			if !tritiumPacket.FlagHeartbeat {
-				sendFrame := make([]byte, 16)
-				tritium.PacketToSocketCANFrame(tritiumPacket, sendFrame)
-				// Find the socket by bus number
-				unix.Write(fd, sendFrame)
+				tmp := make([]byte, 8)
+				binary.BigEndian.PutUint64(tmp[:], tritiumPacket.Data)
+
+				vcan.SendFrame(socketcan.CanFrame{
+					ArbId:    tritiumPacket.CanID,
+					Dlc:      tritiumPacket.Length,
+					Data:     tmp[0:8],
+					Extended: tritiumPacket.FlagExtendedID,
+				})
 			}
 
 			// Subsequent packets are 14 bytes
@@ -320,33 +328,38 @@ func doStuffOverTCP(conf Config) {
 
 				// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
 				if !tritiumPacket.FlagHeartbeat {
-					sendFrame := make([]byte, 16)
-					tritium.PacketToSocketCANFrame(tritiumPacket, sendFrame)
-					// Find the socket by bus number
-					unix.Write(fd, sendFrame)
+					tmp := make([]byte, 8)
+					binary.BigEndian.PutUint64(tmp[:], tritiumPacket.Data)
+
+					vcan.SendFrame(socketcan.CanFrame{
+						ArbId:    tritiumPacket.CanID,
+						Dlc:      tritiumPacket.Length,
+						Data:     tmp[0:8],
+						Extended: tritiumPacket.FlagExtendedID,
+					})
 				}
 			}
-		}(conn, fd)
+		}(conn, vcan)
 
 		// Forward from SocketCAN interface over TCP
-		go func(socketCanFd int, packetConn net.Conn, macAddress uint64) {
-			rxBuff := make([]byte, 16)
+		go func(vcan socketcan.Interface, packetConn net.Conn, macAddress uint64) {
 			txBuff := make([]byte, 30)
 
 			for {
-				// Read from SocketCAN interface
-				// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
-				numBytes, err := unix.Read(socketCanFd, rxBuff[:])
-				log.Println("kralyoloasdf", rxBuff)
+				canFrame, err := vcan.RecvFrame()
 				if err != nil {
 					continue
 				}
-				if numBytes != 16 {
-					panic("numBytes was not 16 bytes")
-				}
 
+				// TODO: Write a proper conversion function here
 				tritiumPacket := new(tritium.Packet)
-				tritium.SocketCANToTritiumPacket(rxBuff, tritiumPacket, uint64(0x5472697469756), 0xd, macAddress)
+				tritiumPacket.VersionIdentifier = uint64(0x5472697469756)
+				tritiumPacket.BusNumber = 0xd
+				tritiumPacket.ClientIdentifier = macAddress
+				tritiumPacket.CanID = canFrame.ArbId
+				tritiumPacket.FlagExtendedID = canFrame.Extended
+				tritiumPacket.Length = canFrame.Dlc
+				tritiumPacket.Data = binary.BigEndian.Uint64(canFrame.Data[0:8])
 
 				tritium.PacketToNetworkByteArray(tritiumPacket, txBuff)
 
@@ -362,7 +375,7 @@ func doStuffOverTCP(conf Config) {
 					log.Printf("Only wrote %d bytes\n", bytes)
 				}
 			}
-		}(fd, conn, macAddress)
+		}(vcan, conn, macAddress)
 	}
 
 	select {}
