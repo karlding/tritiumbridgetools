@@ -1,10 +1,6 @@
 package tritium
 
 import (
-	"golang.org/x/sys/unix"
-
-	"github.com/karlding/tritiumbridgetools/socketcan"
-
 	"encoding/binary"
 	"fmt"
 )
@@ -171,68 +167,6 @@ func ByteArrayToTritiumMessage(array []byte, tritiumPacket *Packet) {
 	fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.ClientIdentifier)
 
 	byteArrayToTritiumMessage(array[16:], tritiumPacket)
-}
-
-// PacketToSocketCANFrame converts a Tritium Packet representation to a
-// SocketCAN frame
-func PacketToSocketCANFrame(tritiumPacket *Packet, sendFrame []byte) {
-	// 4 + 1 + 1 + 1 + 1 + 8 = 16
-	// Taken from the Linux kernel source:
-	//   include/uapi/linux/can.h
-	//
-	// struct can_frame {
-	//   canid_t can_id;  [> 32 bit CAN_ID + EFF/RTR/ERR flags <]
-	//   __u8    can_dlc; [> frame payload length in byte (0 .. CAN_MAX_DLEN) <]
-	//   __u8    __pad;   [> padding <]
-	//   __u8    __res0;  [> reserved / padding <]
-	//   __u8    __res1;  [> reserved / padding <]
-	//   __u8    data[CAN_MAX_DLEN] __attribute__((aligned(8)));
-	// };
-	// sendFrame := make([]byte, 16)
-
-	// Set Arbitration ID
-	canID := tritiumPacket.CanID
-	if tritiumPacket.FlagExtendedID {
-		canID = tritiumPacket.CanID | unix.CAN_EFF_FLAG
-	}
-
-	frame := can.Frame{}
-	frame.CanID = canID
-	frame.CanDLC = tritiumPacket.Length
-	binary.BigEndian.PutUint64(frame.Data[:], tritiumPacket.Data)
-
-	can.FrameToBuffer(&frame, sendFrame)
-
-	// return sendFrame
-}
-
-// SocketCANToTritiumPacket converts a SocketCAN message buffer to a Tritium Packet representation
-func SocketCANToTritiumPacket(sendFrame []byte, tritiumPacket *Packet, versionIdentifier uint64, busNumber uint8, clientIdentifier uint64) {
-	// TODO: Once a Userspace library exists for working with CANFrame, switch
-	// to using that.
-
-	// Convert to a can.Frame first
-	canFrame := new(can.Frame)
-	can.BufferToCANFrame(sendFrame, canFrame)
-
-	// Set magic number
-	tritiumPacket.VersionIdentifier = versionIdentifier
-	tritiumPacket.BusNumber = busNumber
-	tritiumPacket.ClientIdentifier = clientIdentifier
-
-	// CAN arbitration ID
-	// TODO: Mask this properly
-	tritiumPacket.CanID = canFrame.CanID
-
-	// If CAN_EFF_FLAG is set on ID, then set FlagExtendedID
-	// TODO: Add support for RTR frames
-	// TODO: Add support for extended frames
-
-	// Length
-	tritiumPacket.Length = canFrame.CanDLC
-
-	// Data
-	tritiumPacket.Data = binary.BigEndian.Uint64(canFrame.Data[0:8])
 }
 
 // PacketToNetworkByteArray converts a Tritium Packet representation to a raw Byte Array to be sent over

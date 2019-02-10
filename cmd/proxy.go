@@ -79,9 +79,6 @@ func handleUDPPackets(packetConn *ipv4.PacketConn, socketMapNew map[uint8]socket
 
 		// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
 		if !tritiumPacket.FlagHeartbeat {
-			sendFrame := make([]byte, 16)
-			tritium.PacketToSocketCANFrame(tritiumPacket, sendFrame)
-
 			// Find the socket by bus number
 			if vcan, ok := socketMapNew[tritiumPacket.BusNumber]; ok {
 				tmp := make([]byte, 8)

@@ -36,19 +36,3 @@ func TestByteArrayIdentity(t *testing.T) {
 	// Test that converting to a Tritium Message and back results in the same
 	// byte array
 }
-
-func TestPacketToSocketCANFrame(t *testing.T) {
-
-}
-
-func TestSocketCANToTritiumPacket(t *testing.T) {
-
-}
-
-func TestSocketCANIdentity(t *testing.T) {
-	// Test that converting to a Tritium Message and back results in the same
-	// SocketCAN byte array
-	// rawBuffer := []byte{1, 4, 0, 0, 6, 0, 0, 0, 10, 0, 102, 152, 11, 0, 0, 0}
-
-	//
-}
