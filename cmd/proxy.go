@@ -7,7 +7,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/linklayer/go-socketcan/pkg/socketcan"
 
-	"github.com/karlding/tritiumbridgetools/tritium"
+	"github.com/karlding/tritiumbridgetools/pkg/tritium"
 
 	"encoding/binary"
 	"fmt"
