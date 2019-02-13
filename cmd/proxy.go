@@ -77,7 +77,8 @@ func handleUDPPackets(packetConn *ipv4.PacketConn, socketMapNew map[uint8]socket
 		tritiumPacket := new(tritium.Packet)
 		tritium.ByteArrayToTritiumMessage(b, tritiumPacket)
 
-		// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
+		// Now forward onto SocketCAN interface if it isn't a Heartbeat or
+		// Settings frame
 		if !tritiumPacket.FlagHeartbeat {
 			// Find the socket by bus number
 			if vcan, ok := socketMapNew[tritiumPacket.BusNumber]; ok {
@@ -286,8 +287,9 @@ func doStuffOverTCP(conf Config) {
 			tritiumPacket := new(tritium.Packet)
 			tritium.ByteArrayToTritiumMessage(b, tritiumPacket)
 
-			// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
-			if !tritiumPacket.FlagHeartbeat {
+			// Now forward onto SocketCAN interface if it isn't a Heartbeat or
+			// Settings frame
+			if !tritiumPacket.FlagHeartbeat && !tritiumPacket.FlagSettings {
 				tmp := make([]byte, 8)
 				binary.BigEndian.PutUint64(tmp[:], tritiumPacket.Data)
 
@@ -323,8 +325,9 @@ func doStuffOverTCP(conf Config) {
 				tritiumPacket := new(tritium.Packet)
 				tritium.ByteArrayTCPToTritiumMessage(buff, tritiumPacket)
 
-				// Now forward onto SocketCAN interface if it isn't a Heartbeat frame
-				if !tritiumPacket.FlagHeartbeat {
+				// Now forward onto SocketCAN interface if it isn't a Heartbeat
+				// or Settings frame
+				if !tritiumPacket.FlagHeartbeat && !tritiumPacket.FlagSettings {
 					tmp := make([]byte, 8)
 					binary.BigEndian.PutUint64(tmp[:], tritiumPacket.Data)
 
