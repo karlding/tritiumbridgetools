@@ -58,7 +58,7 @@ var proxyCommand = &cobra.Command{
 	},
 }
 
-func handleUDPPackets(packetConn *ipv4.PacketConn, socketMapNew map[uint8]socketcan.Interface) {
+func handleUDPPackets(packetConn *ipv4.PacketConn, socketMap map[uint8]socketcan.Interface) {
 	// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
 	b := make([]byte, 30)
 
@@ -81,7 +81,7 @@ func handleUDPPackets(packetConn *ipv4.PacketConn, socketMapNew map[uint8]socket
 		// Settings frame
 		if !tritiumPacket.FlagHeartbeat {
 			// Find the socket by bus number
-			if vcan, ok := socketMapNew[tritiumPacket.BusNumber]; ok {
+			if vcan, ok := socketMap[tritiumPacket.BusNumber]; ok {
 				tmp := make([]byte, 8)
 				binary.BigEndian.PutUint64(tmp[:], tritiumPacket.Data)
 
@@ -101,7 +101,7 @@ func doStuffOverUDP(conf Config) {
 	group := net.IPv4(239, 255, 60, 60)
 
 	// socketMap[Bus Number] = SocketCAN file descriptor
-	socketMapNew := make(map[uint8]socketcan.Interface)
+	socketMap := make(map[uint8]socketcan.Interface)
 
 	// Start a UDP connection
 	// The Tritium CAN-Ethernet bridge always broadcasts on port 4876
@@ -124,7 +124,7 @@ func doStuffOverUDP(conf Config) {
 			log.Fatal(err)
 			return
 		}
-		socketMapNew[bridge.ID] = vcan
+		socketMap[bridge.ID] = vcan
 
 		networkInterface, err := net.InterfaceByName(bridge.NetworkInterface)
 		if err != nil {
@@ -147,7 +147,7 @@ func doStuffOverUDP(conf Config) {
 
 			for {
 				// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
-				canFrame, err := socketMapNew[0xd].RecvFrame()
+				canFrame, err := socketMap[0xd].RecvFrame()
 				if err != nil {
 					panic("oof")
 				}
@@ -178,7 +178,7 @@ func doStuffOverUDP(conf Config) {
 		}(p, macAddress)
 	}
 
-	go handleUDPPackets(p, socketMapNew)
+	go handleUDPPackets(p, socketMap)
 
 	select {}
 }
@@ -205,19 +205,6 @@ func doStuffOverTCP(conf Config) {
 			log.Fatal(err)
 			return
 		}
-		// vcan, err := net.InterfaceByName(bridge.SocketCANInterface)
-		// if err != nil {
-		// log.Fatal(err)
-		// return
-		// }
-
-		// fd, err := unix.Socket(unix.AF_CAN, unix.SOCK_RAW, unix.CAN_RAW)
-		// if err != nil {
-		// return
-		// }
-
-		// addr := &unix.SockaddrCAN{Ifindex: vcan.Index}
-		// unix.Bind(fd, addr)
 
 		networkInterface, err := net.InterfaceByName(bridge.NetworkInterface)
 		if err != nil {

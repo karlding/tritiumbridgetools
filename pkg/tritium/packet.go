@@ -2,7 +2,7 @@ package tritium
 
 import (
 	"encoding/binary"
-	"fmt"
+	"log"
 )
 
 // magicNumber is the magic number denoting the Tritium UDP packet protocol
@@ -66,24 +66,16 @@ func byteArrayToTritiumMessage(array []byte, tritiumPacket *Packet) {
 	//  * the data contained in the physical CAN packet
 	//  * Extra bytes are padded with 0s to result in 8 bytes of data
 	tritiumPacket.CanID = binary.BigEndian.Uint32(array[0:4])
-	fmt.Printf("CAN ID: 0x%x\n", tritiumPacket.CanID)
 
 	flags := array[4]
 	tritiumPacket.FlagHeartbeat = (flags>>7)&uint8(1) == 1
 	tritiumPacket.FlagSettings = (flags>>6)&uint8(1) == 1
 	tritiumPacket.FlagRtr = (flags>>1)&uint8(1) == 1
 	tritiumPacket.FlagExtendedID = (flags>>0)&uint8(1) == 1
-	fmt.Printf("Flags: 0x%x\n", flags)
-	fmt.Printf("Heartbeat: %t\n", tritiumPacket.FlagHeartbeat)
-	fmt.Printf("Settings: %t\n", tritiumPacket.FlagSettings)
-	fmt.Printf("RTR: %t\n", tritiumPacket.FlagRtr)
-	fmt.Printf("Extended: %t\n", tritiumPacket.FlagExtendedID)
 
 	tritiumPacket.Length = uint8(array[5])
-	fmt.Printf("Length: 0x%x\n", tritiumPacket.Length)
 
 	tritiumPacket.Data = binary.BigEndian.Uint64(array[6:14])
-	fmt.Printf("Data: 0x%x\n", tritiumPacket.Data)
 }
 
 // ByteArrayTCPToTritiumMessage converts a byte array received from a TCP
@@ -100,9 +92,6 @@ func ByteArrayTCPToTritiumMessage(array []byte, tritiumPacket *Packet) {
 	// +-----------------------------+
 	// | Data (64 bits)              | 6 - 13
 	// +-----------------------------+
-	for key, val := range array {
-		fmt.Printf("array[%d]: 0x%x\n", key, val)
-	}
 	byteArrayToTritiumMessage(array, tritiumPacket)
 }
 
@@ -144,27 +133,19 @@ func ByteArrayToTritiumMessage(array []byte, tritiumPacket *Packet) {
 	// Client Identifier:
 	//  * The CAN-Ethernet bridges use the MAC address of their Ethernet
 	//    interface as their client id
-	fmt.Println(array)
-	for i, val := range array {
-		fmt.Printf("array[%d]: 0x%x\n", i, val)
-	}
 	busIdentifier := binary.BigEndian.Uint64(array[0:8])
 	// Mask out the high bits that
 	tritiumPacket.VersionIdentifier = busIdentifier >> 4
 	tritiumPacket.BusNumber = uint8(busIdentifier & (0x0F))
 
 	if tritiumPacket.VersionIdentifier != magicNumber {
-		fmt.Println("Tritium Packet did not contain magic number.")
+		log.Println("Tritium Packet did not contain magic number.")
 		return
 		panic("Tritium Packet did not contain magic number.")
 	}
-	fmt.Printf("Bus Identifier: 0x%x\n", busIdentifier)
-	fmt.Printf("Version Identifier: 0x%x\n", tritiumPacket.VersionIdentifier)
-	fmt.Printf("Bus Number: 0x%x\n", tritiumPacket.BusNumber)
 
 	// Mask out the
 	tritiumPacket.ClientIdentifier = binary.BigEndian.Uint64(array[8:16])
-	fmt.Printf("Client Identifier: 0x%x\n", tritiumPacket.ClientIdentifier)
 
 	byteArrayToTritiumMessage(array[16:], tritiumPacket)
 }
