@@ -142,12 +142,11 @@ func doStuffOverUDP(conf Config) {
 		}
 
 		// Start a goroutine for each SocketCAN interface to forward over UDP
-		go func(packetConn *ipv4.PacketConn, macAddress uint64) {
+		go func(bridgeID uint8, packetConn *ipv4.PacketConn, macAddress uint64) {
 			txBuff := make([]byte, 30)
 
 			for {
-				// (64 + 8 + 8 + 32 + 56 + 8 + 56 + 8) bits = 30 bytes
-				canFrame, err := socketMap[0xd].RecvFrame()
+				canFrame, err := socketMap[bridgeID].RecvFrame()
 				if err != nil {
 					panic("oof")
 				}
@@ -156,7 +155,7 @@ func doStuffOverUDP(conf Config) {
 				// TODO: Write a proper conversion function here
 				tritiumPacket := new(tritium.Packet)
 				tritiumPacket.VersionIdentifier = uint64(0x5472697469756)
-				tritiumPacket.BusNumber = 0xd
+				tritiumPacket.BusNumber = bridgeID
 				tritiumPacket.ClientIdentifier = macAddress
 				tritiumPacket.CanID = canFrame.ArbId
 				tritiumPacket.FlagExtendedID = canFrame.Extended
@@ -175,7 +174,7 @@ func doStuffOverUDP(conf Config) {
 					log.Printf("Only wrote %d bytes\n", bytes)
 				}
 			}
-		}(p, macAddress)
+		}(bridge.ID, p, macAddress)
 	}
 
 	go handleUDPPackets(p, socketMap)
@@ -226,7 +225,7 @@ func doStuffOverTCP(conf Config) {
 		// CAN-Ethernet Bridge Configuration tool, otherwise the TCP connection is
 		// terminated.
 		// TODO: Take these as configuration options?
-		busIdentifier := (uint64(0x5472697469756) << 4) | uint64(0xd)
+		busIdentifier := (uint64(0x5472697469756) << 4) | uint64(bridge.ID)
 
 		binary.BigEndian.PutUint32(setupBuffer[0:4], fwdIdentifier)
 		binary.BigEndian.PutUint32(setupBuffer[4:8], fwdRange)
@@ -329,7 +328,7 @@ func doStuffOverTCP(conf Config) {
 		}(conn, vcan)
 
 		// Forward from SocketCAN interface over TCP
-		go func(vcan socketcan.Interface, packetConn net.Conn, macAddress uint64) {
+		go func(vcan socketcan.Interface, bridgeID uint8, packetConn net.Conn, macAddress uint64) {
 			txBuff := make([]byte, 30)
 
 			for {
@@ -341,7 +340,7 @@ func doStuffOverTCP(conf Config) {
 				// TODO: Write a proper conversion function here
 				tritiumPacket := new(tritium.Packet)
 				tritiumPacket.VersionIdentifier = uint64(0x5472697469756)
-				tritiumPacket.BusNumber = 0xd
+				tritiumPacket.BusNumber = bridgeID
 				tritiumPacket.ClientIdentifier = macAddress
 				tritiumPacket.CanID = canFrame.ArbId
 				tritiumPacket.FlagExtendedID = canFrame.Extended
@@ -362,7 +361,7 @@ func doStuffOverTCP(conf Config) {
 					log.Printf("Only wrote %d bytes\n", bytes)
 				}
 			}
-		}(vcan, conn, macAddress)
+		}(vcan, bridge.ID, conn, macAddress)
 	}
 
 	select {}
