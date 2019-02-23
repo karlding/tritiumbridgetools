@@ -11,7 +11,7 @@ tools for working with the Tritium CAN-Ethernet bridge
 ifconfig
 
 # Assign yourself an IPv4 address on the same subnet
-sudo ifconfig enp0s25 up 169.254.253.191
+sudo ifconfig enp0s25 up 192.168.10.102
 
 # Bring up a vcan interface
 sudo modprobe can
@@ -35,11 +35,6 @@ sudo ip link set up vcan0
 ./tritiumbridgetools proxy \
   --transport=tcp \
   --config=configs/example-01.toml
-
-# Dump data to stdout in candump format
-./tritiumbridgetools dump \
-  --transport=udp \
-  --config=configs/example-01.toml
 ```
 
 ## Known limitations
@@ -56,9 +51,15 @@ interface the bridge is connected to
 
 ### Example 01: Map a Tritium CAN-Ethernet bridge to a vcan network
 
+This assumes that:
+
+* Your bridge has the static ip `192.168.10.101`
+* Your network interface is called `enp0s25`
+* The SocketCAN interface you wish to forward onto is called `vcan0`
+
 ```toml
 [[bridge]]
-ip = "169.254.253.192"
+ip = "192.168.10.101"
 id = 13
 network_interface = "enp0s25"
 vcan = "vcan0"

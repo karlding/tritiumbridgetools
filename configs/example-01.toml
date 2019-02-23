@@ -1,5 +1,5 @@
 [[bridge]]
-ip = "169.254.253.192"
+ip = "192.168.10.101"
 id = 13
 network_interface = "enp0s25"
 vcan = "vcan0"
