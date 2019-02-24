@@ -27,7 +27,26 @@ func TestByteArrayTCPToTritiumMessage(t *testing.T) {
 	assert.Equal(t, uint64(0x1100540dbb190000), canPacket.Data, "Data is not equal")
 }
 
-// TODO: Add a test for Extended IDs as well
+func TestByteArrayTCPToTritiumMessageExtended(t *testing.T) {
+	// Taken from ELCON UHF Charger Status Message
+	canPacket := new(Packet)
+	rawBuffer := []byte{
+		0x18, 0xff, 0x50, 0xe5, 0x01, 0x08, 0x64, 0x00,
+		0x64, 0x00, 0x00, 0x00, 0x00, 0x00,
+	}
+
+	ByteArrayTCPToTritiumMessage(rawBuffer, canPacket)
+
+	assert.Equal(t, false, canPacket.FlagHeartbeat, "FlagHeartbeat was not equal")
+	assert.Equal(t, false, canPacket.FlagSettings, "FlagSettings was not equal")
+	assert.Equal(t, false, canPacket.FlagRtr, "FlagRtr was not equal")
+	assert.Equal(t, true, canPacket.FlagExtendedID, "FlagExtendedID was not equal")
+
+	assert.Equal(t, uint32(0x18ff50e5), canPacket.CanID, "CAN frame ID was not equal")
+	assert.Equal(t, uint8(8), canPacket.Length, "CAN frame length was not equal")
+
+	assert.Equal(t, uint64(0x6400640000000000), canPacket.Data, "Data is not equal")
+}
 
 func TestByteArrayToTritiumMessageHeartbeat(t *testing.T) {
 	// UDP test using Heartbeat packet
